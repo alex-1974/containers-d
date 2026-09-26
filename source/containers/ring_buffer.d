@@ -7,7 +7,7 @@
  */
 module containers.ring_buffer;
 
-import core.lifetime : emplace, forward;
+import core.lifetime : emplace, forward, moveEmplace;
 import std.traits : isCopyable, Unqual;
 
 ///
@@ -138,7 +138,14 @@ public:
         while (!rhs.empty)
         {
             auto source = rhs.slotPointer(rhs._head);
-            emplace(slotPointer(_length), __rvalue(*source));
+            auto target = slotPointer(_length);
+
+            // moveEmplace transfers into uninitialized target storage while
+            // leaving a valid moved-from T in source. End that source lifetime
+            // explicitly before removing the slot from rhs' live accounting.
+            moveEmplace(*source, *target);
+            destroy!false(*source);
+
             ++_length;
             rhs.consumeMovedFront();
         }
@@ -573,6 +580,7 @@ unittest
         {
             value = rhs.value;
             rhs.value = -1;
+            ++alive;
             ++moved;
         }
 
@@ -617,17 +625,18 @@ unittest
         assert(moved[2].value == 17);
         assert(TrackedTransfer.alive == 7);
         assert(TrackedTransfer.moved == 3);
+        assert(TrackedTransfer.destroyed == 3);
 
         original.clear();
         assert(TrackedTransfer.alive == 4);
 
         moved.clear();
         assert(TrackedTransfer.alive == 1);
-        assert(TrackedTransfer.destroyed == 6);
+        assert(TrackedTransfer.destroyed == 9);
     }
 
     assert(TrackedTransfer.alive == 0);
-    assert(TrackedTransfer.destroyed == 7);
+    assert(TrackedTransfer.destroyed == 10);
 }
 
 unittest
