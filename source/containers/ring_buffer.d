@@ -119,35 +119,43 @@ public:
         @disable this(ref return scope typeof(this) rhs);
     }
 
-    /**
-     * Element-wise move construction.
-     *
-     * Each successfully moved source element has its lifetime ended by the
-     * element move construction and is immediately removed from the source
-     * container's live-slot accounting. On success the source has no remaining
-     * live elements. Per D move-constructor semantics, callers must not use the
-     * source object after moving it.
-     *
-     * If a later element move fails, already-moved destination elements are
-     * destroyed and the source retains only its not-yet-moved suffix.
-     */
-    this(return scope typeof(this) rhs)
+    static if (__traits(hasMoveConstructor, T))
     {
-        scope(failure) clear();
-
-        while (!rhs.empty)
+        /**
+         * Whole-buffer move construction is temporarily unavailable when T
+         * defines a language move constructor.
+         *
+         * DMD 2.111's core.lifetime.moveEmplace implements relocation through
+         * blit/opPostMove/wipe semantics and does not dispatch T's language move
+         * constructor. Using it here would silently bypass T's contract.
+         */
+        @disable this(return scope typeof(this) rhs);
+    }
+    else
+    {
+        /**
+         * Element-wise destructive relocation into uninitialized inline
+         * storage using the baseline runtime's moveEmplace contract.
+         *
+         * Each source slot is wiped by moveEmplace, explicitly destroyed in its
+         * moved-from state, and only then removed from the source buffer's live
+         * accounting.
+         */
+        this(return scope typeof(this) rhs)
         {
-            auto source = rhs.slotPointer(rhs._head);
-            auto target = slotPointer(_length);
+            scope(failure) clear();
 
-            // moveEmplace transfers into uninitialized target storage while
-            // leaving a valid moved-from T in source. End that source lifetime
-            // explicitly before removing the slot from rhs' live accounting.
-            moveEmplace(*source, *target);
-            destroy!false(*source);
+            while (!rhs.empty)
+            {
+                auto source = rhs.slotPointer(rhs._head);
+                auto target = slotPointer(_length);
 
-            ++_length;
-            rhs.consumeMovedFront();
+                moveEmplace(*source, *target);
+                destroy!false(*source);
+
+                ++_length;
+                rhs.consumeMovedFront();
+            }
         }
     }
 
@@ -543,7 +551,9 @@ unittest
         Buffer copy = source;
     }));
 
-    static assert(__traits(compiles, {
+    static assert(__traits(hasMoveConstructor, MoveOnly));
+
+    static assert(!__traits(compiles, {
         Buffer source;
         Buffer moved = __rvalue(source);
     }));
@@ -617,26 +627,24 @@ unittest
         assert(TrackedTransfer.alive == 7);
         assert(TrackedTransfer.copied == 6);
 
-        StaticRingBuffer!(TrackedTransfer, 3) moved = __rvalue(copy);
-
-        assert(moved.length == 3);
-        assert(moved[0].value == 17);
-        assert(moved[1].value == 17);
-        assert(moved[2].value == 17);
-        assert(TrackedTransfer.alive == 7);
-        assert(TrackedTransfer.moved == 3);
-        assert(TrackedTransfer.destroyed == 3);
+        // T defines a language move constructor, so whole-buffer move remains
+        // disabled until the raw-storage implementation can dispatch it
+        // correctly on every supported baseline.
+        static assert(__traits(hasMoveConstructor, TrackedTransfer));
+        static assert(!__traits(compiles, {
+            StaticRingBuffer!(TrackedTransfer, 3) moved = __rvalue(copy);
+        }));
 
         original.clear();
         assert(TrackedTransfer.alive == 4);
 
-        moved.clear();
+        copy.clear();
         assert(TrackedTransfer.alive == 1);
-        assert(TrackedTransfer.destroyed == 9);
+        assert(TrackedTransfer.destroyed == 6);
     }
 
     assert(TrackedTransfer.alive == 0);
-    assert(TrackedTransfer.destroyed == 10);
+    assert(TrackedTransfer.destroyed == 7);
 }
 
 unittest
@@ -731,4 +739,65 @@ unittest
 
     buffer.clear();
     assert(buffer.empty);
+}
+
+unittest
+{
+    // For an element without a language move constructor, baseline
+    // moveEmplace relocation must transfer resource ownership without releasing
+    // the resource from the wiped source slot.
+    struct RelocatableOwner
+    {
+        static int releases;
+
+        int value;
+        bool armed;
+
+        this(int value)
+        {
+            this.value = value;
+            armed = true;
+        }
+
+        this(ref return scope RelocatableOwner rhs)
+        {
+            value = rhs.value;
+            armed = rhs.armed;
+        }
+
+        ~this()
+        {
+            if (armed)
+                ++releases;
+        }
+    }
+
+    static assert(!__traits(hasMoveConstructor, RelocatableOwner));
+
+    RelocatableOwner.releases = 0;
+
+    {
+        auto seed = RelocatableOwner(41);
+
+        StaticRingBuffer!(RelocatableOwner, 3) source;
+        assert(source.tryPushBack(seed));
+        assert(source.tryPushBack(seed));
+        assert(source.tryPushBack(seed));
+
+        StaticRingBuffer!(RelocatableOwner, 3) moved = __rvalue(source);
+
+        assert(moved.length == 3);
+        assert(moved[0].value == 41);
+        assert(moved[1].value == 41);
+        assert(moved[2].value == 41);
+
+        // Wiped moved-from slots are destroyed with armed == false.
+        assert(RelocatableOwner.releases == 0);
+
+        moved.clear();
+        assert(RelocatableOwner.releases == 3);
+    }
+
+    // The independent seed owns and releases its own copied resource token.
+    assert(RelocatableOwner.releases == 4);
 }
