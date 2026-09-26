@@ -1,0 +1,9 @@
+name "containers-d"
+description "High-performance generic container primitives"
+authors "Alexander Bernardi"
+license "MIT"
+
+targetType "library"
+sourcePaths "source"
+
+toolchainRequirements frontend=">=2.111.0"

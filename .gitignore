@@ -1,0 +1,17 @@
+.dub/
+build/
+docs.json
+__dummy.html
+dub.selections.json
+
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+*.pdb
+
+.workspace/

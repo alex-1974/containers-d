@@ -1,0 +1,8 @@
+.github/       export-ignore
+.workspace/    export-ignore
+AGENTS.md      export-ignore
+CONTRIBUTING.md export-ignore
+ROADMAP.md     export-ignore
+DESIGN_PRINCIPLES.md export-ignore
+docs/          export-ignore
+evidence/      export-ignore
