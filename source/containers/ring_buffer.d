@@ -59,10 +59,23 @@ private:
     {
         assert(logicalIndex < Capacity);
 
-        size_t index = _head + logicalIndex;
-        if (index >= Capacity)
-            index -= Capacity;
-        return index;
+        static if ((Capacity & (Capacity - 1)) == 0)
+        {
+            // Measured specialization: for power-of-two capacities both DMD
+            // 2.111 and LDC 1.41 produce fewer retired instructions than the
+            // branch/subtract path. See
+            // evidence/performance/ring-buffer-wraparound.md.
+            return (_head + logicalIndex) & (Capacity - 1);
+        }
+        else
+        {
+            // For non-power-of-two capacities, measured faster than modulo on
+            // both baseline compilers.
+            size_t index = _head + logicalIndex;
+            if (index >= Capacity)
+                index -= Capacity;
+            return index;
+        }
     }
 
     void advanceHead() nothrow @safe @nogc
