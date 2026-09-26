@@ -15,10 +15,9 @@ import core.lifetime : emplace, forward;
 /// Exactly `length` slots contain live `T` objects. Unused slots are raw
 /// storage and are not default-constructed merely because the buffer exists.
 ///
-/// Copying, moving, and identity assignment of the whole buffer are disabled
-/// during the semantic-core milestone. This prevents accidental bitwise
-/// relocation of live elements in raw storage until explicit element-wise
-/// semantics are implemented and validated.
+/// Copy and move construction are element-wise; live elements are never
+/// bitwise-copied as raw storage. Identity assignment remains disabled until
+/// its self-assignment and exception guarantees are specified and validated.
 ///
 /// Params:
 ///   T = element type
@@ -72,12 +71,72 @@ private:
             _head = 0;
     }
 
+    // Ends the container's ownership of a front slot whose T lifetime has
+    // already ended through move construction. No destructor is called here.
+    void consumeMovedFront() nothrow @safe @nogc
+    {
+        assert(_length > 0);
+
+        --_length;
+        if (_length == 0)
+        {
+            _head = 0;
+        }
+        else
+        {
+            advanceHead();
+        }
+    }
+
 public:
-    // Raw inline storage cannot yet be copied or moved as a whole safely for
-    // arbitrary non-trivial T. Keep these operations impossible until explicit
-    // element-wise semantics are implemented.
-    @disable this(ref return scope typeof(this) rhs);
-    @disable this(return scope typeof(this) rhs);
+    /**
+     * Element-wise copy construction.
+     *
+     * The destination is laid out contiguously from physical slot zero even
+     * when the source is wrapped. The source remains unchanged.
+     *
+     * If copying an element fails, already-constructed destination elements
+     * are destroyed before the exception leaves the constructor.
+     */
+    this(ref return scope typeof(this) rhs)
+    {
+        scope(failure) clear();
+
+        foreach (logicalIndex; 0 .. rhs._length)
+        {
+            const sourceIndex = rhs.physicalIndex(logicalIndex);
+            emplace(slotPointer(_length), *rhs.slotPointer(sourceIndex));
+            ++_length;
+        }
+    }
+
+    /**
+     * Element-wise move construction.
+     *
+     * Each successfully moved source element has its lifetime ended by the
+     * element move construction and is immediately removed from the source
+     * container's live-slot accounting. On success the source has no remaining
+     * live elements. Per D move-constructor semantics, callers must not use the
+     * source object after moving it.
+     *
+     * If a later element move fails, already-moved destination elements are
+     * destroyed and the source retains only its not-yet-moved suffix.
+     */
+    this(return scope typeof(this) rhs)
+    {
+        scope(failure) clear();
+
+        while (!rhs.empty)
+        {
+            auto source = rhs.slotPointer(rhs._head);
+            emplace(slotPointer(_length), __rvalue(*source));
+            ++_length;
+            rhs.consumeMovedFront();
+        }
+    }
+
+    // Identity assignment remains deliberately unavailable until its
+    // self-assignment and exception guarantees are specified.
     @disable ref typeof(this) opAssign(ref typeof(this) rhs);
 
     /// Number of live elements.
@@ -271,25 +330,62 @@ unittest
 
 unittest
 {
-    // The initial implementation deliberately rejects whole-buffer bit copies
-    // and moves until element-wise semantics are implemented.
-    alias Buffer = StaticRingBuffer!(int, 2);
+    alias Buffer = StaticRingBuffer!(int, 4);
 
-    static assert(!__traits(compiles, {
-        Buffer a;
-        Buffer b = a;
-    }));
+    Buffer original;
+    assert(original.tryPushBack(10));
+    assert(original.tryPushBack(20));
+    assert(original.tryPushBack(30));
+    assert(original.tryPushBack(40));
+    original.popFront();
+    original.popFront();
+    assert(original.tryPushBack(50));
+    assert(original.tryPushBack(60));
 
-    static assert(!__traits(compiles, {
-        Buffer a;
-        Buffer b = __rvalue(a);
-    }));
+    // Copy construction preserves logical order across physical wraparound.
+    Buffer copy = original;
+    assert(copy.length == 4);
+    assert(copy[0] == 30);
+    assert(copy[1] == 40);
+    assert(copy[2] == 50);
+    assert(copy[3] == 60);
 
+    // The copy owns independent element lifetimes/storage.
+    original.popFront();
+    assert(original.tryPushBack(70));
+    assert(copy[0] == 30);
+    assert(copy[3] == 60);
+
+    // Identity assignment is still deliberately unavailable.
     static assert(!__traits(compiles, {
         Buffer a;
         Buffer b;
         b = a;
     }));
+}
+
+unittest
+{
+    alias Buffer = StaticRingBuffer!(int, 4);
+
+    Buffer source;
+    assert(source.tryPushBack(1));
+    assert(source.tryPushBack(2));
+    assert(source.tryPushBack(3));
+    source.popFront();
+    assert(source.tryPushBack(4));
+    assert(source.tryPushBack(5));
+
+    // Move construction also normalizes a wrapped source into logical order.
+    Buffer moved = __rvalue(source);
+    assert(moved.length == 4);
+    assert(moved[0] == 2);
+    assert(moved[1] == 3);
+    assert(moved[2] == 4);
+    assert(moved[3] == 5);
+
+    // The D language ends the source lifetime at move construction. Do not
+    // inspect or otherwise use source here.
 }
 
 unittest
@@ -399,4 +495,39 @@ unittest
 
     assert(Tracked.alive == 0);
     assert(Tracked.destroyed == 3);
+}
+
+unittest
+{
+    // A move-only element keeps the buffer move-constructible without making
+    // the buffer copy-constructible.
+    struct MoveOnly
+    {
+        int value;
+
+        this(int value)
+        {
+            this.value = value;
+        }
+
+        @disable this(ref return scope MoveOnly rhs);
+
+        this(return scope MoveOnly rhs)
+        {
+            value = rhs.value;
+            rhs.value = -1;
+        }
+    }
+
+    alias Buffer = StaticRingBuffer!(MoveOnly, 2);
+
+    static assert(!__traits(compiles, {
+        Buffer source;
+        Buffer copy = source;
+    }));
+
+    static assert(__traits(compiles, {
+        Buffer source;
+        Buffer moved = __rvalue(source);
+    }));
 }
