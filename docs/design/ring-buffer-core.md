@@ -286,20 +286,20 @@ reference sequence model.
 Correctness comes first, but the representation is designed for predictable
 hot paths.
 
-Benchmark at least:
+A production optimization that selects between materially different source
+shapes requires reproducible evidence on the supported compiler baselines.
 
-- append when not wrapping;
-- append at wrap boundary;
-- front removal when not wrapping;
-- front removal at wrap boundary;
-- indexed traversal;
-- two-segment bulk traversal.
+For the initial semantic core, the physical-index wraparound choice is such a
+decision and is benchmarked directly. Representative end-to-end push/pop and
+indexed-traversal baselines may be added as regression evidence as the public
+API stabilizes.
 
-Compare alternative index-wrap implementations rather than assuming modulo,
-branching or masking is universally best.
+Two-segment bulk traversal is benchmarked when that segment-access API is
+actually introduced; it is not an admission requirement for a surface that does
+not yet expose segment access.
 
-Record compiler version, optimization mode, element type and capacity with every
-result.
+Record compiler version, optimization mode, workload, element type and capacity
+with every material performance result.
 
 ## 15. Admission gate
 

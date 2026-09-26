@@ -31,8 +31,17 @@ GitHub Actions:
 
 - runner: `ubuntu-24.04`;
 - workflow: `Ring Buffer Performance Probe`;
-- workflow run: `36275477188`;
-- measured commit: `f1acb04cec9ba6749c6eb2cc270eaa536abb83cf`.
+- original measurement run: `36275477188`;
+- original measurement commit: `f1acb04cec9ba6749c6eb2cc270eaa536abb83cf`;
+- hardened-harness confirmation run: `36276651706`;
+- harness-hardening commit: `2023b49777d8560b281bd572a1af9691f55bfedc`.
+
+The original harness returned its deterministic static input arrays by value.
+After two exact reproductions, one later DMD CI run failed the semantic preflight.
+No toolchain cause was inferred from that observation. The harness was hardened
+to fill caller-owned static arrays by `ref` and to print every checksum before
+comparison. The hardened harness reproduced all checksums and every recorded
+`Ir` value exactly on both baseline compilers.
 
 Compilers and flags:
 
@@ -170,3 +179,14 @@ The probe covers the workspace baseline compilers only:
 
 Later compiler-specific optimization work should rerun the same harness before
 changing the specialization.
+
+## Reproducibility note
+
+Instruction counts are deterministic for this Callgrind probe under the recorded
+environment. Repeated successful runs produced the exact same counts, rather
+than merely similar wall-clock samples.
+
+Warm-up and median timing are not applicable to the selected decision metric:
+the evidence is retired instruction count for a fixed deterministic workload,
+not elapsed time. The semantic checksum preflight remains mandatory before every
+instruction-count run.
