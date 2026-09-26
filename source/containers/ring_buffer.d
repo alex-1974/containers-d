@@ -1,9 +1,14 @@
 /**
- * Fixed-capacity ring buffer primitives.
+ * Provides a fixed-capacity FIFO ring buffer with inline storage.
  *
- * This module is not yet exported from the package facade. Its API remains
- * provisional until the admission gate in docs/design/ring-buffer-core.md is
- * satisfied.
+ * The primary entry point is $(LREF StaticRingBuffer).
+ *
+ * The module is not yet re-exported from the package facade while the first
+ * admission gate is being completed.
+ *
+ * See_Also:
+ *   `docs/design/ring-buffer-core.md`,
+ *   `evidence/performance/ring-buffer-wraparound.md`
  */
 module containers.ring_buffer;
 
@@ -11,18 +16,37 @@ import core.lifetime : emplace, forward, moveEmplace;
 import std.traits : isCopyable, Unqual;
 
 ///
-/// Bounded single-threaded FIFO ring buffer with inline storage.
+/// Stores up to `Capacity` FIFO elements in inline storage.
 ///
 /// Exactly `length` slots contain live `T` objects. Unused slots are raw
 /// storage and are not default-constructed merely because the buffer exists.
 ///
-/// Copy and move construction are element-wise; live elements are never
-/// bitwise-copied as raw storage. Identity assignment remains disabled until
-/// its self-assignment and exception guarantees are specified and validated.
+/// Copy construction is element-wise when `T` is copyable. Whole-buffer move
+/// construction is available for element types without a D language move
+/// constructor; that temporary restriction is tracked in issue #3. Identity
+/// assignment is currently disabled.
 ///
 /// Params:
-///   T = element type
+///   T = mutable element type
 ///   Capacity = maximum number of live elements; must be greater than zero
+///
+/// Init:
+///   `.init` is a valid empty buffer with no live `T` objects.
+///
+/// Complexity:
+///   Front/back access, indexed access, push, and pop are O(1).
+///
+/// Allocation:
+///   Container bookkeeping and inline storage do not allocate. Operations of
+///   `T` itself may allocate.
+///
+/// Thread_Safety:
+///   Instances are not synchronized. External synchronization is required for
+///   concurrent mutation or mutation concurrent with reads.
+///
+/// Validation:
+///   See `docs/validation.md` and
+///   `evidence/performance/ring-buffer-wraparound.md`.
 ///
 struct StaticRingBuffer(T, size_t Capacity)
 {
@@ -186,64 +210,120 @@ public:
     // self-assignment and exception guarantees are specified.
     @disable ref typeof(this) opAssign(ref typeof(this) rhs);
 
-    /// Number of live elements.
+    /// Returns the number of live elements.
     size_t length() const nothrow @safe @nogc
     {
         return _length;
     }
 
-    /// Whether no live elements are stored.
+    ///
+    unittest
+    {
+        StaticRingBuffer!(int, 2) buffer;
+        assert(buffer.length == 0);
+        assert(buffer.tryPushBack(7));
+        assert(buffer.length == 1);
+    }
+
+    /// Returns whether the buffer contains no live elements.
     bool empty() const nothrow @safe @nogc
     {
         return _length == 0;
     }
 
-    /// Whether all slots contain live elements.
+    ///
+    unittest
+    {
+        StaticRingBuffer!(int, 1) buffer;
+        assert(buffer.empty);
+        assert(buffer.tryPushBack(1));
+        assert(!buffer.empty);
+    }
+
+    /// Returns whether all `Capacity` slots contain live elements.
     bool full() const nothrow @safe @nogc
     {
         return _length == Capacity;
     }
 
-    /// Front element.
+    ///
+    unittest
+    {
+        StaticRingBuffer!(int, 1) buffer;
+        assert(!buffer.full);
+        assert(buffer.tryPushBack(1));
+        assert(buffer.full);
+    }
+
+    /// Returns a mutable reference to the logical front element.
     ref T front()
     {
         assert(!empty);
         return *slotPointer(_head);
     }
 
-    /// Front element, const overload.
+    /// ditto
     ref const(T) front() const
     {
         assert(!empty);
         return *slotPointer(_head);
     }
 
-    /// Back element.
+    ///
+    unittest
+    {
+        StaticRingBuffer!(int, 2) buffer;
+        assert(buffer.tryPushBack(10));
+        assert(buffer.front == 10);
+        buffer.front = 11;
+        assert(buffer.front == 11);
+    }
+
+    /// Returns a mutable reference to the logical back element.
     ref T back()
     {
         assert(!empty);
         return *slotPointer(physicalIndex(_length - 1));
     }
 
-    /// Back element, const overload.
+    /// ditto
     ref const(T) back() const
     {
         assert(!empty);
         return *slotPointer(physicalIndex(_length - 1));
     }
 
-    /// Logical indexed access independent of physical wraparound.
+    ///
+    unittest
+    {
+        StaticRingBuffer!(int, 2) buffer;
+        assert(buffer.tryPushBack(10));
+        assert(buffer.tryPushBack(20));
+        assert(buffer.back == 20);
+    }
+
+    /// Returns a mutable reference to an element by logical FIFO index.
     ref T opIndex(size_t logicalIndex)
     {
         assert(logicalIndex < _length);
         return *slotPointer(physicalIndex(logicalIndex));
     }
 
-    /// Logical indexed access, const overload.
+    /// ditto
     ref const(T) opIndex(size_t logicalIndex) const
     {
         assert(logicalIndex < _length);
         return *slotPointer(physicalIndex(logicalIndex));
+    }
+
+    ///
+    unittest
+    {
+        StaticRingBuffer!(int, 3) buffer;
+        assert(buffer.tryPushBack(10));
+        assert(buffer.tryPushBack(20));
+        assert(buffer[0] == 10);
+        assert(buffer[1] == 20);
     }
 
     /**
@@ -253,6 +333,18 @@ public:
      * and the container performs no allocation or element construction.
      *
      * The argument category is forwarded to T's construction.
+     *
+     * Returns:
+     *   `true` when a new element was constructed; `false` when already full.
+     *
+     * Failure:
+     *   When full, the logical sequence and all existing elements are unchanged.
+     *
+     * Complexity:
+     *   O(1).
+     *
+     * Allocation:
+     *   The container itself does not allocate.
      */
     bool tryPushBack(U)(auto ref U value)
     if (is(Unqual!U == T) &&
@@ -267,10 +359,23 @@ public:
         return true;
     }
 
+    ///
+    unittest
+    {
+        StaticRingBuffer!(int, 1) buffer;
+        assert(buffer.tryPushBack(7));
+        assert(!buffer.tryPushBack(8));
+        assert(buffer.front == 7);
+    }
+
     /**
      * Removes and destroys the front element.
      *
-     * Precondition: the buffer is not empty.
+     * Preconditions:
+     *   The buffer is not empty.
+     *
+     * Complexity:
+     *   O(1).
      */
     void popFront()
     {
@@ -291,17 +396,53 @@ public:
         }
     }
 
-    /// Destroys every live element and leaves the buffer empty.
+    ///
+    unittest
+    {
+        StaticRingBuffer!(int, 2) buffer;
+        assert(buffer.tryPushBack(1));
+        assert(buffer.tryPushBack(2));
+        buffer.popFront();
+        assert(buffer.front == 2);
+    }
+
+    /**
+     * Destroys every live element and leaves the buffer empty.
+     *
+     * Complexity:
+     *   O(length).
+     */
     void clear()
     {
         while (!empty)
             popFront();
     }
 
+    ///
+    unittest
+    {
+        StaticRingBuffer!(int, 2) buffer;
+        assert(buffer.tryPushBack(1));
+        assert(buffer.tryPushBack(2));
+        buffer.clear();
+        assert(buffer.empty);
+    }
+
     ~this()
     {
         clear();
     }
+
+}
+
+///
+unittest
+{
+    StaticRingBuffer!(int, 3) buffer;
+    assert(buffer.tryPushBack(10));
+    assert(buffer.tryPushBack(20));
+    buffer.popFront();
+    assert(buffer.front == 20);
 }
 
 unittest
