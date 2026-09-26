@@ -4,27 +4,48 @@ High-performance generic container primitives for D.
 
 Status: pre-release.
 
-## Initial focus
+## Ring buffer
 
-The first container family is the ring buffer.
+The first admitted container is `StaticRingBuffer!(T, Capacity)`: a bounded,
+single-threaded FIFO ring buffer with compile-time capacity and inline storage.
 
-The design will distinguish container types by their actual storage and
-concurrency semantics rather than hiding materially different behaviour behind
-one type.
+```d
+import containers : StaticRingBuffer;
 
-Initial areas of investigation include:
+StaticRingBuffer!(int, 4) queue;
 
-- fixed-capacity inline ring buffers;
+assert(queue.tryPushBack(10));
+assert(queue.tryPushBack(20));
+
+assert(queue.front == 10);
+queue.popFront();
+assert(queue.front == 20);
+```
+
+The ordinary insertion operation never overwrites existing elements. When the
+buffer is full, `tryPushBack` returns `false` and leaves the logical sequence
+unchanged.
+
+The buffer itself performs no heap allocation for construction or steady-state
+push/pop operations. Operations performed by the element type `T` may still
+allocate.
+
+Whole-buffer copy construction is available when `T` is copyable. Whole-buffer
+move construction currently excludes element types that define a D language
+move constructor; that toolchain/lifetime boundary is tracked in issue #3.
+
+## Direction
+
+Future candidates include:
+
 - runtime-capacity ring buffers;
 - FIFO queues;
 - LIFO/FILO stacks;
-- storage and lifetime policies;
-- allocation-free steady-state operation;
 - contiguous segment access for wrapped storage;
-- explicit overflow behaviour;
-- safe and measurable high-performance implementations.
+- separately designed concurrent SPSC/MPMC structures.
 
-Concurrent SPSC/MPMC structures are not assumed to share the same contract as
-ordinary single-threaded containers and will be designed separately if added.
+Materially different storage, ownership, overflow, allocation or concurrency
+semantics are represented explicitly rather than hidden behind one ambiguous
+container type.
 
-See `ROADMAP.md` and `docs/design/`.
+See `ROADMAP.md`, `docs/design/`, and `docs/validation.md`.

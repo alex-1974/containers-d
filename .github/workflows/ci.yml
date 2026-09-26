@@ -56,6 +56,19 @@ jobs:
         shell: bash
         run: DFLAGS="-unittest -preview=dip1000" dub test --compiler="$DC" --force
 
+      - name: External consumer smoke
+        shell: bash
+        run: dub run --root=tests/consumer --compiler="$DC" --force
+
+      - name: External consumer smoke with DIP1000
+        shell: bash
+        run: DFLAGS="-preview=dip1000" dub run --root=tests/consumer --compiler="$DC" --force
+
+      - name: Documentation build
+        if: startsWith(matrix.compiler, 'dmd-')
+        shell: bash
+        run: dub build --build=docs --compiler="$DC" --force
+
       - name: Release build
         shell: bash
         run: dub build --build=release --compiler="$DC" --force
