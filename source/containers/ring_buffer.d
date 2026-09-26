@@ -327,7 +327,7 @@ unittest
 
     assert(buffer.tryPushBack(value));
 
-    auto address = cast(size_t) &buffer.front;
+    auto address = cast(size_t) &buffer[0];
     assert(address % OverAligned.alignof == 0);
 }
 
