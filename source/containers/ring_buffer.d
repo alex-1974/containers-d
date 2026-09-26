@@ -8,6 +8,7 @@
 module containers.ring_buffer;
 
 import core.lifetime : emplace, forward;
+import std.traits : isCopyable;
 
 ///
 /// Bounded single-threaded FIFO ring buffer with inline storage.
@@ -89,25 +90,33 @@ private:
     }
 
 public:
-    /**
-     * Element-wise copy construction.
-     *
-     * The destination is laid out contiguously from physical slot zero even
-     * when the source is wrapped. The source remains unchanged.
-     *
-     * If copying an element fails, already-constructed destination elements
-     * are destroyed before the exception leaves the constructor.
-     */
-    this(ref return scope typeof(this) rhs)
+    static if (isCopyable!T)
     {
-        scope(failure) clear();
-
-        foreach (logicalIndex; 0 .. rhs._length)
+        /**
+         * Element-wise copy construction.
+         *
+         * The destination is laid out contiguously from physical slot zero even
+         * when the source is wrapped. The source remains unchanged.
+         *
+         * If copying an element fails, already-constructed destination elements
+         * are destroyed before the exception leaves the constructor.
+         */
+        this(ref return scope typeof(this) rhs)
         {
-            const sourceIndex = rhs.physicalIndex(logicalIndex);
-            emplace(slotPointer(_length), *rhs.slotPointer(sourceIndex));
-            ++_length;
+            scope(failure) clear();
+
+            foreach (logicalIndex; 0 .. rhs._length)
+            {
+                const sourceIndex = rhs.physicalIndex(logicalIndex);
+                emplace(slotPointer(_length), *rhs.slotPointer(sourceIndex));
+                ++_length;
+            }
         }
+    }
+    else
+    {
+        /// Copy construction is unavailable when T itself is not copyable.
+        @disable this(ref return scope typeof(this) rhs);
     }
 
     /**
