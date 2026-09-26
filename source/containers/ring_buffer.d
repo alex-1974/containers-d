@@ -540,3 +540,185 @@ unittest
         Buffer moved = __rvalue(source);
     }));
 }
+
+unittest
+{
+    // Whole-buffer copy and move construction must preserve non-trivial element
+    // lifetime accounting. A move transfers one live lifetime; it does not
+    // create an additional live element.
+    struct TrackedTransfer
+    {
+        static int alive;
+        static int copied;
+        static int moved;
+        static int destroyed;
+
+        int value;
+
+        this(int value)
+        {
+            this.value = value;
+            ++alive;
+        }
+
+        this(ref return scope TrackedTransfer rhs)
+        {
+            value = rhs.value;
+            ++alive;
+            ++copied;
+        }
+
+        this(return scope TrackedTransfer rhs)
+        {
+            value = rhs.value;
+            rhs.value = -1;
+            ++moved;
+        }
+
+        ~this()
+        {
+            --alive;
+            ++destroyed;
+        }
+    }
+
+    TrackedTransfer.alive = 0;
+    TrackedTransfer.copied = 0;
+    TrackedTransfer.moved = 0;
+    TrackedTransfer.destroyed = 0;
+
+    {
+        auto seed = TrackedTransfer(17);
+        assert(TrackedTransfer.alive == 1);
+
+        StaticRingBuffer!(TrackedTransfer, 3) original;
+        assert(original.tryPushBack(seed));
+        assert(original.tryPushBack(seed));
+        assert(original.tryPushBack(seed));
+
+        assert(TrackedTransfer.alive == 4);
+        assert(TrackedTransfer.copied == 3);
+
+        StaticRingBuffer!(TrackedTransfer, 3) copy = original;
+
+        assert(copy.length == 3);
+        assert(copy[0].value == 17);
+        assert(copy[1].value == 17);
+        assert(copy[2].value == 17);
+        assert(TrackedTransfer.alive == 7);
+        assert(TrackedTransfer.copied == 6);
+
+        StaticRingBuffer!(TrackedTransfer, 3) moved = __rvalue(copy);
+
+        assert(moved.length == 3);
+        assert(moved[0].value == 17);
+        assert(moved[1].value == 17);
+        assert(moved[2].value == 17);
+        assert(TrackedTransfer.alive == 7);
+        assert(TrackedTransfer.moved == 3);
+
+        original.clear();
+        assert(TrackedTransfer.alive == 4);
+
+        moved.clear();
+        assert(TrackedTransfer.alive == 1);
+        assert(TrackedTransfer.destroyed == 6);
+    }
+
+    assert(TrackedTransfer.alive == 0);
+    assert(TrackedTransfer.destroyed == 7);
+}
+
+unittest
+{
+    // For a trivial element type, the ordinary steady-state API must be usable
+    // from @safe @nogc nothrow code.
+    alias Buffer = StaticRingBuffer!(int, 5);
+
+    static assert(__traits(compiles, {
+        () @safe @nogc nothrow {
+            Buffer buffer;
+            assert(buffer.tryPushBack(1));
+            assert(buffer.tryPushBack(2));
+            assert(buffer.front == 1);
+            assert(buffer.back == 2);
+            assert(buffer[1] == 2);
+            buffer.popFront();
+            buffer.clear();
+        }();
+    }));
+}
+
+unittest
+{
+    // Deterministic adversarial model test. It repeatedly mixes append, pop,
+    // clear and observation while comparing every externally visible sequence
+    // property with a deliberately simple non-ring reference model.
+    enum size_t modelCapacity = 7;
+    alias Buffer = StaticRingBuffer!(int, modelCapacity);
+
+    Buffer buffer;
+
+    int[modelCapacity] model;
+    size_t modelLength;
+
+    uint state = 0xC0FF_EE11;
+
+    foreach (step; 0 .. 20_000)
+    {
+        // xorshift32 with a fixed seed keeps failures reproducible.
+        state ^= state << 13;
+        state ^= state >> 17;
+        state ^= state << 5;
+
+        const operation = state % 11;
+
+        if (operation <= 5)
+        {
+            const value = cast(int) (state ^ cast(uint) step);
+            const expectedSuccess = modelLength < modelCapacity;
+
+            assert(buffer.tryPushBack(value) == expectedSuccess);
+
+            if (expectedSuccess)
+                model[modelLength++] = value;
+        }
+        else if (operation <= 8)
+        {
+            if (modelLength != 0)
+            {
+                buffer.popFront();
+
+                foreach (i; 1 .. modelLength)
+                    model[i - 1] = model[i];
+
+                --modelLength;
+            }
+        }
+        else if (operation == 9)
+        {
+            buffer.clear();
+            modelLength = 0;
+        }
+        else
+        {
+            // Observation-only step deliberately leaves both models untouched.
+        }
+
+        assert(buffer.length == modelLength);
+        assert(buffer.empty == (modelLength == 0));
+        assert(buffer.full == (modelLength == modelCapacity));
+
+        foreach (i; 0 .. modelLength)
+            assert(buffer[i] == model[i]);
+
+        if (modelLength != 0)
+        {
+            assert(buffer.front == model[0]);
+            assert(buffer.back == model[modelLength - 1]);
+        }
+    }
+
+    buffer.clear();
+    assert(buffer.empty);
+}
