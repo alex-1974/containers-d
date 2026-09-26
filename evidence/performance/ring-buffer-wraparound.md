@@ -33,15 +33,32 @@ GitHub Actions:
 - workflow: `Ring Buffer Performance Probe`;
 - original measurement run: `36275477188`;
 - original measurement commit: `f1acb04cec9ba6749c6eb2cc270eaa536abb83cf`;
-- hardened-harness confirmation run: `36276651706`;
-- harness-hardening commit: `2023b49777d8560b281bd572a1af9691f55bfedc`.
+- initial measurement run: `36275477188` (superseded as authoritative
+  evidence after harness defects were found);
+- first harness-hardening commit: `2023b49777d8560b281bd572a1af9691f55bfedc`;
+- corrected command-line parsing: committed after the admission review.
 
-The original harness returned its deterministic static input arrays by value.
-After two exact reproductions, one later DMD CI run failed the semantic preflight.
-No toolchain cause was inferred from that observation. The harness was hardened
-to fill caller-owned static arrays by `ref` and to print every checksum before
-comparison. The hardened harness reproduced all checksums and every recorded
-`Ir` value exactly on both baseline compilers.
+The numerical table below is retained because corrected-harness confirmation
+reproduced it exactly; the corrected confirmation run is the authoritative
+reproducibility check.
+
+Two independent harness defects were found while repeatedly exercising the
+semantic preflight:
+
+1. the original deterministic input generator returned static arrays by value;
+   this was simplified to fill caller-owned arrays by `ref`;
+2. more importantly, the command-line round count used
+   `strtoul(args[2].ptr, ...)`, incorrectly treating a D string pointer as a
+   guaranteed NUL-terminated C string.
+
+The second defect explains the sporadic checksum mismatch: one failing
+`modulo-1024` invocation parsed the intended `4096` rounds as `40960`,
+producing exactly 10 times the expected checksum.
+
+The harness now parses the D string with `std.conv.to!size_t` and prints every
+checksum before comparison. No DMD/LDC toolchain defect is inferred from the
+discarded failing runs. Only runs from the corrected harness are accepted as
+current evidence.
 
 Compilers and flags:
 

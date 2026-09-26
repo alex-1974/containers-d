@@ -7,7 +7,7 @@
  */
 module ring_buffer_wrap_probe;
 
-import core.stdc.stdlib : strtoul;
+import std.conv : to;
 import std.stdio : writeln;
 
 enum size_t pairCount = 256;
@@ -148,7 +148,7 @@ void main(string[] args)
         exit(2);
     }
 
-    const rounds = cast(size_t) strtoul(args[2].ptr, null, 10);
+    const rounds = to!size_t(args[2]);
 
     IndexPair[pairCount] pairs1000 = void;
     IndexPair[pairCount] pairs1024 = void;
