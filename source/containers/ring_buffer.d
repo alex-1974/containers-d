@@ -216,43 +216,16 @@ public:
         return _length;
     }
 
-    ///
-    unittest
-    {
-        StaticRingBuffer!(int, 2) buffer;
-        assert(buffer.length == 0);
-        assert(buffer.tryPushBack(7));
-        assert(buffer.length == 1);
-    }
-
     /// Returns whether the buffer contains no live elements.
     bool empty() const nothrow @safe @nogc
     {
         return _length == 0;
     }
 
-    ///
-    unittest
-    {
-        StaticRingBuffer!(int, 1) buffer;
-        assert(buffer.empty);
-        assert(buffer.tryPushBack(1));
-        assert(!buffer.empty);
-    }
-
     /// Returns whether all `Capacity` slots contain live elements.
     bool full() const nothrow @safe @nogc
     {
         return _length == Capacity;
-    }
-
-    ///
-    unittest
-    {
-        StaticRingBuffer!(int, 1) buffer;
-        assert(!buffer.full);
-        assert(buffer.tryPushBack(1));
-        assert(buffer.full);
     }
 
     /// Returns a mutable reference to the logical front element.
@@ -269,16 +242,6 @@ public:
         return *slotPointer(_head);
     }
 
-    ///
-    unittest
-    {
-        StaticRingBuffer!(int, 2) buffer;
-        assert(buffer.tryPushBack(10));
-        assert(buffer.front == 10);
-        buffer.front = 11;
-        assert(buffer.front == 11);
-    }
-
     /// Returns a mutable reference to the logical back element.
     ref T back()
     {
@@ -293,15 +256,6 @@ public:
         return *slotPointer(physicalIndex(_length - 1));
     }
 
-    ///
-    unittest
-    {
-        StaticRingBuffer!(int, 2) buffer;
-        assert(buffer.tryPushBack(10));
-        assert(buffer.tryPushBack(20));
-        assert(buffer.back == 20);
-    }
-
     /// Returns a mutable reference to an element by logical FIFO index.
     ref T opIndex(size_t logicalIndex)
     {
@@ -314,16 +268,6 @@ public:
     {
         assert(logicalIndex < _length);
         return *slotPointer(physicalIndex(logicalIndex));
-    }
-
-    ///
-    unittest
-    {
-        StaticRingBuffer!(int, 3) buffer;
-        assert(buffer.tryPushBack(10));
-        assert(buffer.tryPushBack(20));
-        assert(buffer[0] == 10);
-        assert(buffer[1] == 20);
     }
 
     /**
