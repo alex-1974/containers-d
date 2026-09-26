@@ -1,6 +1,6 @@
 # Ring-buffer semantic core
 
-Status: design contract for the first implementation branch.
+Status: admitted initial contract for `StaticRingBuffer`; further API remains incremental.
 
 This document specializes the workspace engineering contract for the first
 container family in containers-d. It defines the semantics that implementation
@@ -303,7 +303,7 @@ with every material performance result.
 
 ## 15. Admission gate
 
-`StaticRingBuffer` is not exported from the package facade until:
+`StaticRingBuffer` is exported from the package facade only while the following admission conditions remain satisfied:
 
 1. storage/lifetime behavior is executable-test backed;
 2. non-trivial element behavior is resolved;
@@ -311,3 +311,9 @@ with every material performance result.
 4. package CI is green on the Fast compiler pair;
 5. performance probes show no avoidable hot-path regression;
 6. documentation and tests describe the same overflow and invalidation rules.
+
+For the initial admitted surface on PR #2, these conditions are satisfied for
+the documented supported element categories. Element types with a D language
+move constructor remain explicitly excluded from whole-buffer move construction
+and are tracked separately in issue #3; that restriction is compile-time
+enforced and is not hidden behind runtime behavior.

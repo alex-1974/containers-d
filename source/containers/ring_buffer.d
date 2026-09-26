@@ -1,10 +1,8 @@
 /**
  * Provides a fixed-capacity FIFO ring buffer with inline storage.
  *
- * The primary entry point is $(LREF StaticRingBuffer).
- *
- * The module is not yet re-exported from the package facade while the first
- * admission gate is being completed.
+ * The primary entry point is $(LREF StaticRingBuffer), also re-exported from
+ * the package root `containers`.
  *
  * See_Also:
  *   `docs/design/ring-buffer-core.md`,
