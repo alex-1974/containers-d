@@ -27,7 +27,7 @@ import std.traits : isCopyable, Unqual;
 /// assignment is currently disabled.
 ///
 /// Params:
-///   T = mutable element type
+///   T = element type
 ///   Capacity = maximum number of live elements; must be greater than zero
 ///
 /// Init:
