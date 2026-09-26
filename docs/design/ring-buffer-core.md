@@ -101,15 +101,35 @@ Any raw-storage implementation must:
 The container must not rely on accidental bitwise copying of raw storage for
 non-trivial `T`.
 
+Copy construction is element-wise and mirrors `T`'s copyability. When `T` is
+not copyable, buffer copy construction is disabled.
+
+Whole-buffer move construction currently has one explicit temporary
+restriction: element types that define a D language move constructor are not
+accepted for buffer move construction on the baseline implementation.
+
+The reason is concrete rather than theoretical. DMD 2.111
+`core.lifetime.moveEmplace` implements raw relocation with
+blit/`opPostMove`/wipe semantics and does not dispatch the newer language move
+constructor. Silently using that path for such a `T` could bypass invariants
+encoded in `T.this(T)`.
+
+For element types without a language move constructor, the implementation uses
+`moveEmplace` into uninitialized inline storage, explicitly destroys the
+wiped moved-from source object, and then removes that slot from the source
+buffer's live-element accounting.
+
+Support for element language move constructors remains a research/implementation
+item and must be solved without weakening the baseline compiler contract.
+
 Before `StaticRingBuffer` is admitted to the public facade, its behavior must
-be correct for element types with non-trivial construction, copy/move behavior
-and destruction, or the public contract must explicitly restrict the supported
-element category.
+be correct for the supported non-trivial element categories and every temporary
+restriction must be explicit.
 
 Silently supporting only trivial element types is not acceptable.
 
-Tests must include an instrumented element type that counts construction,
-copy/move operations and destruction.
+Tests must include non-trivial copy/destruction cases, ownership-transfer cases,
+and compile-time rejection of unsupported move-constructor element categories.
 
 ## 6. Overflow and underflow
 
