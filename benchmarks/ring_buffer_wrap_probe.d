@@ -18,9 +18,10 @@ struct IndexPair
     size_t offset;
 }
 
-private IndexPair[pairCount] makePairs(size_t capacity) nothrow @nogc
+private void fillPairs(
+    ref IndexPair[pairCount] pairs,
+    size_t capacity) nothrow @nogc
 {
-    IndexPair[pairCount] pairs = void;
     uint state = 0x9E37_79B9;
 
     foreach (ref pair; pairs)
@@ -35,8 +36,6 @@ private IndexPair[pairCount] makePairs(size_t capacity) nothrow @nogc
         state ^= state << 5;
         pair.offset = state % capacity;
     }
-
-    return pairs;
 }
 
 private ulong runBranch(size_t Capacity)(
@@ -151,8 +150,10 @@ void main(string[] args)
 
     const rounds = cast(size_t) strtoul(args[2].ptr, null, 10);
 
-    const pairs1000 = makePairs(1000);
-    const pairs1024 = makePairs(1024);
+    IndexPair[pairCount] pairs1000 = void;
+    IndexPair[pairCount] pairs1024 = void;
+    fillPairs(pairs1000, 1000);
+    fillPairs(pairs1024, 1024);
 
     ulong checksum;
 

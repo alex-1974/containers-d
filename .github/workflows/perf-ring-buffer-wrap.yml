@@ -68,12 +68,15 @@ jobs:
           modulo1024=$("$BIN" modulo-1024 "$ROUNDS" | awk '{print $2}')
           mask1024=$("$BIN" mask-1024 "$ROUNDS" | awk '{print $2}')
 
+          echo "branch-1000: $branch1000"
+          echo "modulo-1000: $modulo1000"
+          echo "branch-1024: $branch1024"
+          echo "modulo-1024: $modulo1024"
+          echo "mask-1024: $mask1024"
+
           test "$branch1000" = "$modulo1000"
           test "$branch1024" = "$modulo1024"
           test "$branch1024" = "$mask1024"
-
-          echo "capacity 1000 checksum: $branch1000"
-          echo "capacity 1024 checksum: $branch1024"
 
       - name: Measure retired instructions
         shell: bash
