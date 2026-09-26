@@ -43,16 +43,26 @@ private:
     size_t _head;
     size_t _length;
 
-    @trusted T* slotPointer(size_t physicalIndex) nothrow @nogc
+    T* slotPointer(size_t physicalIndex) nothrow @safe @nogc
     {
         assert(physicalIndex < Capacity);
-        return cast(T*) (_storage.ptr + physicalIndex * T.sizeof);
+
+        // _storage is aligned to T.alignof and physicalIndex selects one
+        // T-sized slot inside it. The compiler cannot prove that converting
+        // this raw byte address to T* preserves alignment; keep only that cast
+        // inside the trusted boundary. Callers remain responsible for using the
+        // pointer only according to the slot's live-object state.
+        return (() @trusted =>
+            cast(T*) (_storage.ptr + physicalIndex * T.sizeof))();
     }
 
-    @trusted const(T)* slotPointer(size_t physicalIndex) const nothrow @nogc
+    const(T)* slotPointer(size_t physicalIndex) const nothrow @safe @nogc
     {
         assert(physicalIndex < Capacity);
-        return cast(const(T)*) (_storage.ptr + physicalIndex * T.sizeof);
+
+        // Same aligned-slot argument as the mutable overload above.
+        return (() @trusted =>
+            cast(const(T)*) (_storage.ptr + physicalIndex * T.sizeof))();
     }
 
     size_t physicalIndex(size_t logicalIndex) const nothrow @safe @nogc
