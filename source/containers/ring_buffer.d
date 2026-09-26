@@ -8,7 +8,7 @@
 module containers.ring_buffer;
 
 import core.lifetime : emplace, forward;
-import std.traits : isCopyable;
+import std.traits : isCopyable, Unqual;
 
 ///
 /// Bounded single-threaded FIFO ring buffer with inline storage.
@@ -217,7 +217,8 @@ public:
      * The argument category is forwarded to T's construction.
      */
     bool tryPushBack(U)(auto ref U value)
-    if (is(U == T))
+    if (is(Unqual!U == T) &&
+        __traits(compiles, emplace(cast(T*) null, forward!value)))
     {
         if (full)
             return false;
