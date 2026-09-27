@@ -8,8 +8,7 @@
  */
 module containers.element_lifetime_move_probe;
 
-import containers.internal.element_lifetime :
-    sharedPlacementMoveConstruct = placementMoveConstruct;
+import containers.internal.element_lifetime : PlacementMoveOps;
 import std.conv : to;
 import std.stdio : stderr, writeln;
 
@@ -47,6 +46,11 @@ private struct MoveValue
     {
         return (a * 3) ^ (b * 5) ^ (c * 7) ^ (d * 11);
     }
+}
+
+private struct MixedInMoveOps
+{
+    mixin PlacementMoveOps!MoveValue;
 }
 
 /**
@@ -99,7 +103,7 @@ extern(C) ulong bench_shared(size_t rounds) @safe @nogc nothrow
     {
         auto source = MoveValue(cast(ulong) i + 1);
         auto placed =
-            sharedPlacementMoveConstruct!MoveValue(target, source);
+            MixedInMoveOps.placementMoveConstruct(target, source);
 
         checksum += placed.checksum;
         destroy!false(*placed);
