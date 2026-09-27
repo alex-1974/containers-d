@@ -64,13 +64,20 @@ jobs:
         shell: bash
         run: DFLAGS="-preview=dip1000" dub run --root=tests/consumer --compiler="$DC" --force
 
+      - name: Runtime GC reachability
+        shell: bash
+        run: dub run --root=tests/gc-reachability --compiler="$DC" --force
+
       - name: DIP1000 borrowed-slice negative compile
         shell: bash
         run: |
-          if DFLAGS="-preview=dip1000" dub build               --root=tests/compile-negative/segment-escape               --compiler="$DC"               --force; then
-            echo "Expected borrowed segment escape to fail under DIP1000."
-            false
-          fi
+          for root in             tests/compile-negative/segment-escape             tests/compile-negative/runtime-segment-escape
+          do
+            if DFLAGS="-preview=dip1000" dub build                 --root="$root"                 --compiler="$DC"                 --force; then
+              echo "Expected borrowed segment escape to fail under DIP1000: $root"
+              false
+            fi
+          done
 
       - name: Documentation build
         if: startsWith(matrix.compiler, 'dmd-')

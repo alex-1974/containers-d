@@ -1,14 +1,13 @@
 /**
  * Runtime-capacity owning FIFO ring buffer.
  *
- * This module is provisional during the M3.2 implementation gate. RingBuffer
- * is package-visible only and is not yet re-exported from the package root.
+ * RingBuffer is also re-exported from the package-root `containers` module.
  */
 module containers.runtime_ring_buffer;
 
 import containers.internal.runtime_storage : RuntimeStorageOwner;
 import core.lifetime : emplace, forward;
-import std.traits : Unqual;
+import std.traits : hasElaborateDestructor, Unqual;
 
 /**
  * Owning bounded FIFO ring buffer with runtime-selected capacity.
@@ -16,10 +15,11 @@ import std.traits : Unqual;
  * The backing storage is acquired once at construction and retained across
  * push/pop/clear operations. Exactly length slots contain live T objects.
  *
- * This type remains package-visible until its public admission gate is
- * complete.
+ * Copy construction is disabled because backing storage is uniquely owned.
+ * Whole-buffer move transfers ownership in O(1) without relocating live
+ * elements.
  */
-package(containers) struct RingBuffer(T)
+struct RingBuffer(T)
 {
     static assert(T.sizeof > 0,
         "RingBuffer requires an element type with non-zero size");
@@ -28,6 +28,36 @@ private:
     RuntimeStorageOwner!T _storage;
     size_t _head;
     size_t _length;
+
+    ref T borrowedSlot(
+        size_t physicalIndex) scope return @trusted
+    {
+        // RuntimeStorageOwner owns this heap allocation uniquely. The compiler
+        // sees only a stored pointer value and cannot prove that its lifetime
+        // ends with this RingBuffer. This helper is the narrow bridge from
+        // internal pointer provenance to the public owner-borrow contract.
+        return *_storage.slotPointer(physicalIndex);
+    }
+
+    ref const(T) borrowedSlot(
+        size_t physicalIndex) const scope return @trusted
+    {
+        return *_storage.slotPointer(physicalIndex);
+    }
+
+    T[] borrowedSlice(
+        size_t physicalStart,
+        size_t count) scope return @trusted @nogc nothrow
+    {
+        return _storage.slotSlice(physicalStart, count);
+    }
+
+    const(T)[] borrowedSlice(
+        size_t physicalStart,
+        size_t count) const scope return @trusted @nogc nothrow
+    {
+        return _storage.slotSlice(physicalStart, count);
+    }
 
     size_t physicalIndex(size_t logicalIndex) const @safe @nogc nothrow
     {
@@ -43,6 +73,14 @@ private:
             return _head + logicalIndex;
 
         return logicalIndex - tailRoom;
+    }
+
+    void endSlotLifetime(size_t physicalIndex)
+    {
+        static if (hasElaborateDestructor!T)
+            destroy!false(*_storage.slotPointer(physicalIndex));
+
+        _storage.clearVacatedSlot(physicalIndex);
     }
 
     void advanceHead() @safe @nogc nothrow
@@ -119,45 +157,104 @@ public:
     }
 
     /// Mutable logical front element.
-    ref T front() return scope
+    ref T front() scope return
     {
         assert(!empty);
-        return *_storage.slotPointer(_head);
+        return borrowedSlot(_head);
     }
 
     /// ditto
-    ref const(T) front() const return scope
+    ref const(T) front() const scope return
     {
         assert(!empty);
         return *_storage.slotPointer(_head);
     }
 
     /// Mutable logical back element.
-    ref T back() return scope
+    ref T back() scope return
     {
         assert(!empty);
-        return *_storage.slotPointer(physicalIndex(_length - 1));
+        return borrowedSlot(physicalIndex(_length - 1));
     }
 
     /// ditto
-    ref const(T) back() const return scope
+    ref const(T) back() const scope return
     {
         assert(!empty);
         return *_storage.slotPointer(physicalIndex(_length - 1));
     }
 
     /// Mutable logical indexed access independent of physical wraparound.
-    ref T opIndex(size_t logicalIndex) return scope
+    ref T opIndex(size_t logicalIndex) scope return
+    {
+        assert(logicalIndex < _length);
+        return borrowedSlot(physicalIndex(logicalIndex));
+    }
+
+    /// ditto
+    ref const(T) opIndex(size_t logicalIndex) const scope return
     {
         assert(logicalIndex < _length);
         return *_storage.slotPointer(physicalIndex(logicalIndex));
     }
 
-    /// ditto
-    ref const(T) opIndex(size_t logicalIndex) const return scope
+    /**
+     * Returns the first contiguous physical segment in logical FIFO order.
+     *
+     * The returned slice borrows the owned backing allocation. Successful
+     * structural mutation, whole-buffer move, or destruction invalidates
+     * previously returned segment slices.
+     */
+    T[] firstSegment() scope return @trusted @nogc nothrow
     {
-        assert(logicalIndex < _length);
-        return *_storage.slotPointer(physicalIndex(logicalIndex));
+        if (empty)
+            return null;
+
+        const physicalRemaining = capacity - _head;
+        const count = _length < physicalRemaining
+            ? _length
+            : physicalRemaining;
+
+        return borrowedSlice(_head, count);
+    }
+
+    /// ditto
+    const(T)[] firstSegment() const scope return @trusted @nogc nothrow
+    {
+        if (empty)
+            return null;
+
+        const physicalRemaining = capacity - _head;
+        const count = _length < physicalRemaining
+            ? _length
+            : physicalRemaining;
+
+        return _storage.slotSlice(_head, count);
+    }
+
+    /**
+     * Returns the wrapped continuation after $(LREF firstSegment).
+     *
+     * The returned slice is empty whenever the logical sequence is physically
+     * contiguous.
+     */
+    T[] secondSegment() scope return @trusted @nogc nothrow
+    {
+        if (empty)
+            return null;
+
+        const firstCount = firstSegment.length;
+        return borrowedSlice(0, _length - firstCount);
+    }
+
+    /// ditto
+    const(T)[] secondSegment() const scope return @trusted @nogc nothrow
+    {
+        if (empty)
+            return null;
+
+        const firstCount = firstSegment.length;
+        return _storage.slotSlice(0, _length - firstCount);
     }
 
     /**
@@ -189,8 +286,7 @@ public:
         assert(!empty);
 
         const physical = _head;
-        destroy!false(*_storage.slotPointer(physical));
-        _storage.clearVacatedSlot(physical);
+        endSlotLifetime(physical);
 
         --_length;
 
@@ -208,6 +304,17 @@ public:
         while (!empty)
             popFront();
     }
+}
+
+///
+unittest
+{
+    auto queue = RingBuffer!int(4);
+    assert(queue.tryPushBack(10));
+    assert(queue.tryPushBack(20));
+    queue.popFront();
+    assert(queue.front == 20);
+    assert(queue.capacity == 4);
 }
 
 version (unittest)
@@ -482,4 +589,84 @@ unittest
             moved.clear();
         }();
     }));
+}
+
+unittest
+{
+    // A ring buffer stores a class reference as a value; pop must not invoke
+    // the referenced object's class finalizer.
+    class ReferenceElement
+    {
+        bool finalized;
+
+        ~this()
+        {
+            finalized = true;
+        }
+    }
+
+    auto object = new ReferenceElement;
+    auto buffer = RingBuffer!ReferenceElement(1);
+
+    assert(buffer.tryPushBack(object));
+    buffer.popFront();
+
+    assert(buffer.empty);
+    assert(!object.finalized);
+}
+
+unittest
+{
+    auto buffer = RingBuffer!int(4);
+
+    assert(buffer.firstSegment.length == 0);
+    assert(buffer.secondSegment.length == 0);
+
+    assert(buffer.tryPushBack(10));
+    assert(buffer.tryPushBack(20));
+    assert(buffer.tryPushBack(30));
+
+    assert(buffer.firstSegment == [10, 20, 30]);
+    assert(buffer.secondSegment.length == 0);
+
+    buffer.popFront();
+    buffer.popFront();
+
+    assert(buffer.tryPushBack(40));
+    assert(buffer.tryPushBack(50));
+    assert(buffer.tryPushBack(60));
+
+    assert(buffer.firstSegment == [30, 40]);
+    assert(buffer.secondSegment == [50, 60]);
+    assert(buffer.firstSegment.length + buffer.secondSegment.length == buffer.length);
+
+    buffer.secondSegment[0] = 51;
+    assert(buffer[2] == 51);
+}
+
+unittest
+{
+    // A full runtime ring with a non-zero head is represented by two physical
+    // segments whose concatenation is the exact logical FIFO sequence.
+    auto buffer = RingBuffer!int(4);
+
+    foreach (value; 1 .. 5)
+        assert(buffer.tryPushBack(value));
+
+    assert(buffer.firstSegment == [1, 2, 3, 4]);
+    assert(buffer.secondSegment.length == 0);
+
+    buffer.popFront();
+    assert(buffer.tryPushBack(5));
+
+    assert(buffer.firstSegment == [2, 3, 4]);
+    assert(buffer.secondSegment == [5]);
+
+    size_t logicalIndex;
+    foreach (value; buffer.firstSegment)
+        assert(value == buffer[logicalIndex++]);
+    foreach (value; buffer.secondSegment)
+        assert(value == buffer[logicalIndex++]);
+
+    assert(logicalIndex == buffer.length);
 }

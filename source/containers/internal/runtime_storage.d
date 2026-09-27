@@ -213,6 +213,35 @@ public:
             cast(const(T)*) (_bytes.ptr + physicalIndex * T.sizeof))();
     }
 
+
+    package(containers) T[] slotSlice(
+        size_t physicalStart,
+        size_t count) return scope @safe @nogc nothrow
+    {
+        if (count == 0)
+            return null;
+
+        assert(physicalStart < _capacity);
+        assert(count <= _capacity - physicalStart);
+
+        return (() @trusted =>
+            slotPointer(physicalStart)[0 .. count])();
+    }
+
+    package(containers) const(T)[] slotSlice(
+        size_t physicalStart,
+        size_t count) const return scope @safe @nogc nothrow
+    {
+        if (count == 0)
+            return null;
+
+        assert(physicalStart < _capacity);
+        assert(count <= _capacity - physicalStart);
+
+        return (() @trusted =>
+            slotPointer(physicalStart)[0 .. count])();
+    }
+
     /// Identity assignment is deliberately unavailable in the first owner.
     @disable ref typeof(this) opAssign(ref typeof(this) rhs);
 

@@ -1,0 +1,5 @@
+name "containers-d-gc-reachability"
+description "GC reachability integration test for runtime RingBuffer"
+targetType "executable"
+
+dependency "containers-d" path="../../"

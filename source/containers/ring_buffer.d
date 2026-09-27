@@ -11,7 +11,29 @@
 module containers.ring_buffer;
 
 import core.lifetime : emplace, forward, moveEmplace;
-import std.traits : isCopyable, Unqual;
+import std.traits : hasElaborateDestructor, hasIndirections, isCopyable, isNested, Unqual;
+
+private union StaticRingStorage(T, size_t Capacity)
+{
+    static if (hasIndirections!T)
+    {
+        static if (isNested!T)
+        {
+            // Embedding a nested T would make this storage aggregate inherit
+            // T's hidden context pointer. Use a conservative scan shape instead
+            // while issue #10 researches nested-element semantics separately.
+            void[T.sizeof * Capacity] conservativeGcShape;
+        }
+        else
+        {
+            // For ordinary element types, expose T's exact repeated pointer
+            // layout to the compiler-generated GC bitmap.
+            T[Capacity] gcShape;
+        }
+    }
+
+    align(T.alignof) ubyte[T.sizeof * Capacity] bytes;
+}
 
 version (unittest)
 {
@@ -165,10 +187,25 @@ struct StaticRingBuffer(T, size_t Capacity)
     enum size_t capacity = Capacity;
 
 private:
-    // One aligned byte region owns storage for Capacity potential T objects.
-    // Bytes are intentionally left uninitialized until an element lifetime
-    // begins through emplace.
-    align(T.alignof) ubyte[T.sizeof * Capacity] _storage = void;
+    // The raw bytes are the only storage member used by container logic.
+    //
+    // For indirection-bearing T, StaticRingStorage overlays T[Capacity] only so
+    // D's compiler-generated GC pointer bitmap describes the true potential
+    // pointer offsets. The union itself owns no T lifetime.
+    alias Storage = StaticRingStorage!(T, Capacity);
+
+    static if (hasIndirections!T)
+    {
+        // Pointer-bearing raw storage must start from a GC-safe .init bitmap
+        // rather than arbitrary bytes that could look like stale roots.
+        Storage _storage = Storage.init;
+    }
+    else
+    {
+        // Pointer-free elements keep the original uninitialized-storage fast
+        // path: no byte is read before a T lifetime is explicitly begun.
+        Storage _storage = void;
+    }
 
     size_t _head;
     size_t _length;
@@ -183,7 +220,7 @@ private:
         // inside the trusted boundary. Callers remain responsible for using the
         // pointer only according to the slot's live-object state.
         return (() @trusted =>
-            cast(T*) (_storage.ptr + physicalIndex * T.sizeof))();
+            cast(T*) (_storage.bytes.ptr + physicalIndex * T.sizeof))();
     }
 
     const(T)* slotPointer(size_t physicalIndex) const scope return nothrow @safe @nogc
@@ -192,7 +229,7 @@ private:
 
         // Same aligned-slot argument as the mutable overload above.
         return (() @trusted =>
-            cast(const(T)*) (_storage.ptr + physicalIndex * T.sizeof))();
+            cast(const(T)*) (_storage.bytes.ptr + physicalIndex * T.sizeof))();
     }
 
     T[] slotSlice(
@@ -288,6 +325,26 @@ private:
         }
     }
 
+    void clearVacatedSlot(size_t physicalIndex) nothrow @safe @nogc
+    {
+        static if (hasIndirections!T)
+        {
+            const begin = physicalIndex * T.sizeof;
+            _storage.bytes[begin .. begin + T.sizeof] = 0;
+        }
+    }
+
+    void endSlotLifetime(size_t physicalIndex)
+    {
+        static if (hasElaborateDestructor!T)
+            destroy!false(*slotPointer(physicalIndex));
+
+        // Class/interface references and other non-struct indirections are
+        // values stored in the slot; removing them must not finalize the
+        // referenced object. Zeroing only removes the stale GC root.
+        clearVacatedSlot(physicalIndex);
+    }
+
     void advanceHead() nothrow @safe @nogc
     {
         ++_head;
@@ -366,7 +423,7 @@ public:
             else
                 moveEmplace(*source, *target);
 
-            destroy!false(*source);
+            rhs.endSlotLifetime(rhs._head);
 
             ++_length;
             rhs.consumeMovedFront();
@@ -453,7 +510,7 @@ public:
      * Allocation:
      *   None.
      */
-    T[] firstSegment() scope return nothrow @safe @nogc
+    T[] firstSegment() scope return nothrow @trusted @nogc
     {
         if (empty)
             return null;
@@ -467,7 +524,7 @@ public:
     }
 
     /// ditto
-    const(T)[] firstSegment() const scope return nothrow @safe @nogc
+    const(T)[] firstSegment() const scope return nothrow @trusted @nogc
     {
         if (empty)
             return null;
@@ -492,7 +549,7 @@ public:
      * Allocation:
      *   None.
      */
-    T[] secondSegment() scope return nothrow @safe @nogc
+    T[] secondSegment() scope return nothrow @trusted @nogc
     {
         if (empty)
             return null;
@@ -503,7 +560,7 @@ public:
     }
 
     /// ditto
-    const(T)[] secondSegment() const scope return nothrow @safe @nogc
+    const(T)[] secondSegment() const scope return nothrow @trusted @nogc
     {
         if (empty)
             return null;
@@ -588,7 +645,8 @@ public:
     {
         assert(!empty);
 
-        destroy!false(*slotPointer(_head));
+        const physical = _head;
+        endSlotLifetime(physical);
 
         --_length;
         if (_length == 0)
@@ -1267,4 +1325,57 @@ unittest
             Buffer moved = __rvalue(source);
         }();
     }));
+}
+
+unittest
+{
+    // Removing a stored class reference ends only the reference value's slot
+    // lifetime. It must not explicitly finalize the referenced GC object.
+    class ReferenceElement
+    {
+        bool finalized;
+
+        ~this()
+        {
+            finalized = true;
+        }
+    }
+
+    auto object = new ReferenceElement;
+    StaticRingBuffer!(ReferenceElement, 1) buffer;
+
+    assert(buffer.tryPushBack(object));
+    buffer.popFront();
+
+    assert(buffer.empty);
+    assert(!object.finalized);
+}
+
+unittest
+{
+    // The inline raw-storage representation must advertise possible T
+    // indirections to the GC even though live T objects are managed manually.
+    static assert(hasIndirections!(StaticRingBuffer!(Object, 1)));
+    static assert(!hasIndirections!(StaticRingBuffer!(int, 1)));
+}
+
+unittest
+{
+    // A nested indirection-bearing element must not make the raw-storage
+    // overlay itself require an outer context. The fallback is deliberately
+    // conservative until issue #10 resolves nested-element semantics.
+    int outer;
+
+    struct NestedElement
+    {
+        int opCall()
+        {
+            return ++outer;
+        }
+    }
+
+    static assert(isNested!NestedElement);
+    static assert(hasIndirections!NestedElement);
+    static assert(__traits(compiles, StaticRingBuffer!(NestedElement, 2)()));
+    static assert(hasIndirections!(StaticRingBuffer!(NestedElement, 2)));
 }
