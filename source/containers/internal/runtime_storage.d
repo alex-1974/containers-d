@@ -446,18 +446,15 @@ version (unittest)
 {
     private void runtimeStorageLifecycleAttributeProbe() @safe @nogc nothrow
     {
-        auto source = RuntimeStorageOwner!int(8);
-        auto moved = __rvalue(source);
-
-        assert(source.emptyStorage);
-        assert(moved.capacity == 8);
+        auto owner = RuntimeStorageOwner!int(8);
+        assert(owner.capacity == 8);
     }
 }
 
 unittest
 {
-    // Keep this as a direct compile probe so toolchain-specific attribute or
-    // move-safety failures report their actual cause instead of being hidden
-    // behind __traits(compiles).
+    // Keep construction/destruction as a direct attribute probe. Whole-owner
+    // move is tested separately in ordinary code because frontend 2.112+
+    // rejects the __rvalue(local) expression itself inside @safe functions.
     runtimeStorageLifecycleAttributeProbe();
 }
