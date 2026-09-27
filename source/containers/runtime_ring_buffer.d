@@ -5,6 +5,8 @@
  */
 module containers.runtime_ring_buffer;
 
+import containers.internal.element_lifetime :
+    sharedSafeLanguageMoveConstructible = safeLanguageMoveConstructible;
 import containers.internal.runtime_storage : RuntimeStorageOwner;
 import core.lifetime : emplace, forward;
 import std.traits : hasElaborateDestructor, hasIndirections, isNested, Unqual;
@@ -61,12 +63,10 @@ private:
         return _storage.slotSlice(physicalStart, count);
     }
 
-    enum bool safeLanguageMove = __traits(compiles, {
-        void probe(ref T source) @safe
-        {
-            T target = __rvalue(source);
-        }
-    });
+    // Share the language-level move capability probe with the other
+    // container families while preserving RingBuffer's existing behavior.
+    enum bool safeLanguageMove =
+        sharedSafeLanguageMoveConstructible!T;
 
     static if (__traits(hasMoveConstructor, T))
     {
