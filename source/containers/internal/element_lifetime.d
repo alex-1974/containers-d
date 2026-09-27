@@ -59,6 +59,34 @@ package(containers) enum bool elementHasIndirections(T) =
  * correctness depends on D object-lifetime rules so that container families do
  * not each recreate their own trusted placement-construction bridge.
  */
+/**
+ * Move-construct T directly in an unused, suitably aligned slot.
+ *
+ * Function-template form: the operation is instantiated for T at the consumer
+ * and preserves the @safe/@system distinction through mutually exclusive
+ * template constraints.
+ */
+package(containers) T* placementMoveConstruct(T)(
+    T* target,
+    ref T source) @trusted
+if (hasLanguageMoveConstructor!T &&
+    safeLanguageMoveConstructible!T)
+{
+    assert(target !is null);
+    return new (*target) T(__rvalue(source));
+}
+
+/// ditto
+package(containers) T* placementMoveConstruct(T)(
+    T* target,
+    ref T source) @system
+if (hasLanguageMoveConstructor!T &&
+    !safeLanguageMoveConstructible!T)
+{
+    assert(target !is null);
+    return new (*target) T(__rvalue(source));
+}
+
 package(containers) struct ElementLifetimeOps(T)
 {
     static if (hasLanguageMoveConstructor!T)
