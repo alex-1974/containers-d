@@ -61,7 +61,7 @@ private:
     else
         Payload _payload = void;
 
-public package(containers):
+package(containers):
     T* slotPointer(size_t physicalIndex)
         return scope @safe @nogc nothrow
     {
