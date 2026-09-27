@@ -205,7 +205,7 @@ public:
      * structural mutation, whole-buffer move, or destruction invalidates
      * previously returned segment slices.
      */
-    T[] firstSegment() scope return @safe @nogc nothrow
+    T[] firstSegment() scope return @trusted @nogc nothrow
     {
         if (empty)
             return null;
@@ -219,7 +219,7 @@ public:
     }
 
     /// ditto
-    const(T)[] firstSegment() const scope return @safe @nogc nothrow
+    const(T)[] firstSegment() const scope return @trusted @nogc nothrow
     {
         if (empty)
             return null;
@@ -238,7 +238,7 @@ public:
      * The returned slice is empty whenever the logical sequence is physically
      * contiguous.
      */
-    T[] secondSegment() scope return @safe @nogc nothrow
+    T[] secondSegment() scope return @trusted @nogc nothrow
     {
         if (empty)
             return null;
@@ -248,7 +248,7 @@ public:
     }
 
     /// ditto
-    const(T)[] secondSegment() const scope return @safe @nogc nothrow
+    const(T)[] secondSegment() const scope return @trusted @nogc nothrow
     {
         if (empty)
             return null;
