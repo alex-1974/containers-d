@@ -80,7 +80,7 @@ jobs:
 
             echo "capacity=$capacity tailroom=$baseline"
 
-            for variant in modulo detect stored
+            for variant in addcarry modulo detect stored
             do
               checksum=$("$BIN" "$variant" "$capacity" "$ROUNDS" | awk '{print $2}')
               echo "capacity=$capacity $variant=$checksum"
@@ -135,6 +135,7 @@ jobs:
           for capacity in 7 8 63 64 1000 1024
           do
             measure tailroom "$capacity" bench_tailroom
+            measure addcarry "$capacity" bench_addcarry
             measure modulo "$capacity" bench_modulo
             measure detect "$capacity" bench_detect
             measure stored "$capacity" bench_stored
