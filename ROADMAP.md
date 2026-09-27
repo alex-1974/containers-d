@@ -66,14 +66,16 @@ M3 is complete. The next milestone is deliberately not admitted here: choose
 between release preparation and the next container family using the normal
 issue/milestone planning process.
 
-## Release v0.1.0 — in qualification
+## Release v0.1.0 — complete
 
-- freeze the first public ring-buffer family;
-- resolve release-relevant element-type contract questions;
-- align stable documentation with the admitted implementation;
-- qualify the six-compiler release matrix and portability jobs;
-- verify the exported consumer archive;
-- publish the first qualified `main` state as annotated tag `v0.1.0`.
+- froze the first public ring-buffer family;
+- resolved the release-relevant element-type contract for v0.1;
+- aligned stable documentation with the admitted implementation;
+- qualified the six-compiler release matrix;
+- qualified Linux ARM64, Windows x64, macOS Intel and macOS ARM64 portability;
+- verified the exported consumer archive;
+- prepared the qualified state for promotion to `main` and annotated tag
+  `v0.1.0`.
 
 Tracking: issue #21.
 

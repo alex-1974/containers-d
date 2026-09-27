@@ -64,7 +64,7 @@ jobs:
           sha256sum "$archive" > "$archive.sha256"
 
           awk -v version="$version" '
-            $0 == "## [" version "] - 2026-09-27" { in_release=1; next }
+            $0 ~ "^## \\[" version "\\] - " { in_release=1; next }
             in_release && /^## \[/ { exit }
             in_release { print }
           ' CHANGELOG.md > RELEASE_NOTES.md
