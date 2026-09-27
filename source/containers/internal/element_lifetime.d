@@ -101,7 +101,7 @@ package(containers) mixin template PlacementMoveOps(T)
     {
         static if (safeLanguageMoveConstructible!T)
         {
-            private T* placementMoveConstruct(
+            private static T* placementMoveConstruct(
                 T* target,
                 ref T source) @trusted
             {
@@ -111,7 +111,7 @@ package(containers) mixin template PlacementMoveOps(T)
         }
         else
         {
-            private T* placementMoveConstruct(
+            private static T* placementMoveConstruct(
                 T* target,
                 ref T source) @system
             {
