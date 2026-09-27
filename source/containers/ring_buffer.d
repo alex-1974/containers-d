@@ -65,7 +65,7 @@ private:
     size_t _head;
     size_t _length;
 
-    T* slotPointer(size_t physicalIndex) return scope nothrow @safe @nogc
+    T* slotPointer(size_t physicalIndex) scope return nothrow @safe @nogc
     {
         assert(physicalIndex < Capacity);
 
@@ -78,7 +78,7 @@ private:
             cast(T*) (_storage.ptr + physicalIndex * T.sizeof))();
     }
 
-    const(T)* slotPointer(size_t physicalIndex) const return scope nothrow @safe @nogc
+    const(T)* slotPointer(size_t physicalIndex) const scope return nothrow @safe @nogc
     {
         assert(physicalIndex < Capacity);
 
@@ -89,7 +89,7 @@ private:
 
     T[] slotSlice(
         size_t physicalStart,
-        size_t count) return scope nothrow @safe @nogc
+        size_t count) scope return nothrow @safe @nogc
     {
         if (count == 0)
             return null;
@@ -106,7 +106,7 @@ private:
 
     const(T)[] slotSlice(
         size_t physicalStart,
-        size_t count) const return scope nothrow @safe @nogc
+        size_t count) const scope return nothrow @safe @nogc
     {
         if (count == 0)
             return null;
@@ -315,7 +315,7 @@ public:
      * Allocation:
      *   None.
      */
-    T[] firstSegment() return scope nothrow @safe @nogc
+    T[] firstSegment() scope return nothrow @safe @nogc
     {
         if (empty)
             return null;
@@ -329,7 +329,7 @@ public:
     }
 
     /// ditto
-    const(T)[] firstSegment() const return scope nothrow @safe @nogc
+    const(T)[] firstSegment() const scope return nothrow @safe @nogc
     {
         if (empty)
             return null;
@@ -354,7 +354,7 @@ public:
      * Allocation:
      *   None.
      */
-    T[] secondSegment() return scope nothrow @safe @nogc
+    T[] secondSegment() scope return nothrow @safe @nogc
     {
         if (empty)
             return null;
@@ -365,7 +365,7 @@ public:
     }
 
     /// ditto
-    const(T)[] secondSegment() const return scope nothrow @safe @nogc
+    const(T)[] secondSegment() const scope return nothrow @safe @nogc
     {
         if (empty)
             return null;
