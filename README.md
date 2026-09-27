@@ -4,10 +4,16 @@ High-performance generic container primitives for D.
 
 Status: pre-release.
 
-## Ring buffer
+## Ring buffers
 
-The first admitted container is `StaticRingBuffer!(T, Capacity)`: a bounded,
-single-threaded FIFO ring buffer with compile-time capacity and inline storage.
+containers-d provides two bounded, single-threaded FIFO ring-buffer families:
+
+- `StaticRingBuffer!(T, Capacity)` — compile-time capacity with inline storage;
+- `RingBuffer!T` — runtime-selected capacity with one owned backing allocation.
+
+### Static capacity
+
+`StaticRingBuffer!(T, Capacity)` keeps its storage inline.
 
 ```d
 import containers : StaticRingBuffer;
@@ -49,6 +55,35 @@ full buffer does not.
 Whole-buffer copy construction is available when `T` is copyable.
 Whole-buffer move construction preserves D language move constructors when
 present and otherwise uses the classic relocation/`opPostMove` path.
+
+### Runtime capacity
+
+```d
+import containers : RingBuffer;
+
+auto queue = RingBuffer!int(1024);
+
+assert(queue.tryPushBack(10));
+assert(queue.tryPushBack(20));
+queue.popFront();
+assert(queue.front == 20);
+```
+
+`RingBuffer!T.init` and explicit capacity zero are inert, empty states.
+Positive capacity acquires one aligned backing allocation. Implicit copy and
+identity assignment are disabled; whole-buffer move transfers ownership in O(1)
+without relocating live elements.
+
+`clear` destroys live elements but retains backing capacity. Ordinary
+push/pop/clear do not reacquire backing storage.
+
+Wrapped runtime contents are exposed as `firstSegment` followed by
+`secondSegment`. These slices borrow the owning buffer and are invalidated by
+successful structural mutation, owner move, or destruction.
+
+For element types containing GC-visible indirections, the external storage is
+registered with the D GC while owned and vacated slots are cleared to avoid
+stale conservative roots.
 
 ## Direction
 
