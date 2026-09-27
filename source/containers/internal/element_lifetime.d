@@ -95,11 +95,14 @@ if (hasLanguageMoveConstructor!T &&
  * source definition while placing the generated function in the consumer's
  * scope. It injects no state and refers to no host fields.
  */
-package(containers) mixin template PlacementMoveOps(T)
+package(containers) mixin template PlacementMoveOps(
+    T,
+    bool HasMove = hasLanguageMoveConstructor!T,
+    bool SafeMove = safeLanguageMoveConstructible!T)
 {
-    static if (containers.internal.element_lifetime.hasLanguageMoveConstructor!T)
+    static if (HasMove)
     {
-        static if (containers.internal.element_lifetime.safeLanguageMoveConstructible!T)
+        static if (SafeMove)
         {
             private static T* placementMoveConstruct(
                 T* target,
