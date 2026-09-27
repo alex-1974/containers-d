@@ -45,6 +45,34 @@ package(containers) enum bool isRawSlotStorage(S, T) =
         }
     });
 
+
+/**
+ * Whether raw slot storage can sanitize one slot after the T lifetime in that
+ * slot has ended.
+ *
+ * The operation is storage-owned because its purpose depends on how the backing
+ * memory participates in GC scanning. For T without indirections it may compile
+ * to a no-op.
+ */
+package(containers) enum bool hasVacatedSlotCleanup(S) =
+    __traits(compiles, {
+        void probe(ref S storage) @safe @nogc nothrow
+        {
+            if (storage.capacity != 0)
+                storage.clearVacatedSlot(0);
+        }
+    });
+
+/**
+ * Raw slot storage suitable for repeated construct/destroy/reuse cycles.
+ *
+ * This refines the borrowing contract with storage-specific cleanup of slots
+ * whose element lifetime has already ended.
+ */
+package(containers) enum bool isReusableRawSlotStorage(S, T) =
+    isRawSlotStorage!(S, T) &&
+    hasVacatedSlotCleanup!S;
+
 version (unittest)
 {
     import containers.internal.runtime_storage : RuntimeStorageOwner;
@@ -100,6 +128,41 @@ version (unittest)
             return (() @trusted =>
                 slotPointer(physicalStart)[0 .. count])();
         }
+
+
+        void clearVacatedSlot(size_t physicalIndex)
+            @safe @nogc nothrow
+        {
+            assert(physicalIndex < Capacity);
+            // Test storage uses int in the positive concept probe, so no GC
+            // sanitation is required. Real indirection-bearing storage owns
+            // the corresponding byte-clearing rule.
+        }
+    }
+
+    private struct MissingCleanup
+    {
+        enum size_t capacity = 1;
+
+        int* slotPointer(size_t) @safe @nogc nothrow
+        {
+            return null;
+        }
+
+        const(int)* slotPointer(size_t) const @safe @nogc nothrow
+        {
+            return null;
+        }
+
+        int[] slotSlice(size_t, size_t) @safe @nogc nothrow
+        {
+            return null;
+        }
+
+        const(int)[] slotSlice(size_t, size_t) const @safe @nogc nothrow
+        {
+            return null;
+        }
     }
 
     private struct MissingConstAccess
@@ -123,6 +186,15 @@ unittest
     static assert(isRawSlotStorage!(InlineRawSlots!(int, 4), int));
     static assert(isRawSlotStorage!(RuntimeStorageOwner!int, int));
 
-    // The concept deliberately requires both mutable and const borrowing.
+    static assert(isReusableRawSlotStorage!(
+        InlineRawSlots!(int, 4), int));
+    static assert(isReusableRawSlotStorage!(
+        RuntimeStorageOwner!int, int));
+
+    // The base concept deliberately requires both mutable and const borrowing.
     static assert(!isRawSlotStorage!(MissingConstAccess, int));
+
+    // Reusable storage additionally owns post-lifetime slot sanitation.
+    static assert(isRawSlotStorage!(MissingCleanup, int));
+    static assert(!isReusableRawSlotStorage!(MissingCleanup, int));
 }
