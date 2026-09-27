@@ -1,8 +1,8 @@
 /**
  * Runtime-capacity owning FIFO ring buffer.
  *
- * This module is provisional during the M3.2 implementation gate. RingBuffer
- * is package-visible only and is not yet re-exported from the package root.
+ * This module is provisional during the M3.2 public-admission gate. RingBuffer
+ * is directly importable here but is not yet re-exported from the package root.
  */
 module containers.runtime_ring_buffer;
 
@@ -16,10 +16,10 @@ import std.traits : hasElaborateDestructor, Unqual;
  * The backing storage is acquired once at construction and retained across
  * push/pop/clear operations. Exactly length slots contain live T objects.
  *
- * This type remains package-visible until its public admission gate is
- * complete.
+ * This type is not yet re-exported from the package root while its public
+ * admission gate is being completed.
  */
-package(containers) struct RingBuffer(T)
+struct RingBuffer(T)
 {
     static assert(T.sizeof > 0,
         "RingBuffer requires an element type with non-zero size");
