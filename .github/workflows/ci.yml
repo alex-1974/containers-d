@@ -80,3 +80,51 @@ jobs:
       - name: Release build
         shell: bash
         run: dub build --build=release --compiler="$DC" --force
+
+
+  move-constructor-research:
+    if: github.event_name == 'pull_request' && github.head_ref == 'research/move-constructor-elements'
+    name: Move research / ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - dmd-2.111.0
+          - ldc-1.41.0
+          - dmd-2.113.0
+          - ldc-1.43.0
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ${{ matrix.compiler }}
+
+      - name: Compiler identity
+        shell: bash
+        run: |
+          echo "DC=$DC"
+          "$DC" --version
+
+      - name: Build research probe
+        shell: bash
+        run: |
+          mkdir -p build/research
+          "$DC"             -g             -checkaction=context             -of=build/research/move-constructor-probe             experiments/move_constructor_raw_storage/probe.d
+
+      - name: Run research probe
+        shell: bash
+        run: |
+          build/research/move-constructor-probe | tee build/research/results.txt
+
+      - name: Upload research results
+        uses: actions/upload-artifact@v4
+        with:
+          name: move-constructor-${{ matrix.compiler }}
+          path: build/research/results.txt
+          if-no-files-found: error
