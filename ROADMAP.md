@@ -123,6 +123,73 @@ Exit gate:
 Research map:
 `docs/research/workspace-buffer-architecture.md`.
 
+Feasibility study:
+`docs/research/container-family-architecture-feasibility.md`.
+
+### M4.1 — Family model and invariants
+
+- classify the small set of algorithmic families;
+- separate family semantics from storage/lifetime/concurrency mechanisms;
+- define what remains a distinct public type rather than a policy switch;
+- keep existing v0.1 ring-buffer semantics unchanged.
+
+### M4.2 — Internal lifetime/storage foundation experiment
+
+Research-only refactoring/probes:
+
+- centralize reusable element construction/move/destruction rules;
+- specify a structural raw-slot storage contract;
+- keep GC visibility, alignment, overflow and trusted lifetime bridges audited;
+- retain `RuntimeStorageOwner!(T, Backend)` as the first backend-substitution
+  precedent;
+- prove that factoring does not add runtime state or hot-path overhead.
+
+No advanced customization surface is exported in this phase.
+
+### M4.3 — StaticVector family proof
+
+- implement/prototype `StaticVector!(T, Capacity)`;
+- compare directly with geo-d and geo3-d `ExpansionBuffer`;
+- test a thin domain wrapper over StaticVector;
+- qualify DMD/LDC runtime, generated code, compile time and code size;
+- promote only if the generic family core is not materially worse than the
+  consumer-local baseline.
+
+### M4.4 — Ring family factoring proof
+
+Without changing the public v0.1 API:
+
+- prototype shared ring state/algorithms beneath StaticRingBuffer/RingBuffer;
+- retain their different ownership/copy/move contracts;
+- compare generated code and benchmarks against the current implementation;
+- keep the current code if factoring is not zero-cost or otherwise justified.
+
+### M4.5 — Real-consumer adaptation proofs
+
+Demonstrate three distinct adaptation modes:
+
+1. geo-d / geo3-d: domain wrapper over a generic family;
+2. raster-d: composition of bounded FIFO storage with mailbox synchronization
+   and close/drain semantics;
+3. osm-d: reusable/pool-backed storage feeding the existing caller-slice
+   decoder API.
+
+DCanvas remains an additional stress consumer for frame, event and network
+buffer requirements.
+
+### M4.6 — Public customization decision
+
+Only after M4.2-M4.5 evidence:
+
+- decide whether any advanced customization API should become public;
+- expose only mechanisms with multiple real consumer requirements;
+- keep implementation-only optimizations private and automatically selected;
+- reject policy combinations that change container semantics;
+- qualify template-instantiation cost, diagnostics and binary-size impact.
+
+M4 exits by admitting one or more concrete production milestones, not by
+shipping a universal policy framework.
+
 ## Later candidates
 
 - FIFO queues;
