@@ -43,19 +43,25 @@ element-align 64
 ring-align 8
 ring-holder-offset 8
 ring-sufficient 0
-storage-align 64
-storage-holder-offset 8
-storage-sufficient 0
+storage-align 1
+storage-holder-offset 1
+storage-slot-address-mod-element-align 0
+storage-slot-sufficient 1
 ```
 
-Two separate facts matter:
+The current StaticRingBuffer type reports only alignment 8 and is embedded at
+offset 8, so its released representation does not provide the required
+type-level guarantee.
 
-1. the current StaticRingBuffer type itself reports only alignment 8;
-2. even the research InlineRawStorage type, after being given alignof 64, is
-   placed at offset 8 when embedded in a default-aligned holder.
+An intermediate InlineRawStorage experiment also showed that merely increasing
+the wrapper type's `.alignof` was insufficient: DMD could still embed that
+wrapper at the default field alignment.
 
-Therefore merely increasing the nested storage type's `.alignof` is not a
-sufficient DMD-2.111 solution.
+The current research candidate therefore no longer relies on wrapper
+over-alignment. For T.alignof greater than native pointer alignment it reserves
+T.alignof - 1 bytes of inline slack and derives the slot base from the actual
+runtime address. Its wrapper may have alignof 1 and be embedded at offset 1,
+while the actual T slot remains exactly 64-byte aligned.
 
 ## LDC 1.41 result
 
@@ -64,12 +70,16 @@ element-align 64
 ring-align 64
 ring-holder-offset 64
 ring-sufficient 1
-storage-align 64
-storage-holder-offset 64
-storage-sufficient 1
+storage-align 1
+storage-holder-offset 1
+storage-slot-address-mod-element-align 0
+storage-slot-sufficient 1
 ```
 
-LDC propagates the over-alignment through both tested aggregate layers.
+LDC already propagates the current StaticRingBuffer over-alignment correctly.
+The portable InlineRawStorage candidate nevertheless uses the same
+runtime-aligned-slot representation as DMD for over-aligned T so its correctness
+does not depend on compiler-specific aggregate embedding behavior.
 
 ## Existing test limitation
 
@@ -84,19 +94,23 @@ contract.
 
 ## Consequence for M4.2
 
-The reusable InlineRawStorage prototype is not yet admissible as the production
-foundation for arbitrary over-aligned T on both baseline compilers.
+The current reusable InlineRawStorage prototype now demonstrates the first
+cross-compiler representation that finds an aligned inline slot base
+independently of the enclosing object's alignment.
 
-M4.2 can continue to use it for contract/layout research, but production
-promotion requires issue #31 to resolve one of the following:
+For over-aligned T with GC-visible indirections it cannot reuse an exact
+T[Capacity] pointer bitmap because slot zero may be shifted at runtime. The
+candidate therefore overlays the raw payload with a conservative pointer-word
+scan shape and zero-initializes the whole GC-visible payload.
 
-- a representation that finds an aligned inline slot base independent of the
-  enclosing object's base alignment;
-- a proven compiler-qualified supported-alignment bound;
-- another mechanism with equivalent correctness.
+A dedicated GC integration test places InlineRawStorage for an align(64) struct
+containing a class reference inside a GC-heap-resident holder. On both DMD
+2.111 and LDC 1.41 the referent remains reachable while stored and becomes
+collectible after the slot lifetime ends and clearVacatedSlot() zeros the slot.
 
-For indirection-bearing T, any dynamically shifted slot base must also preserve
-GC visibility of all possible pointer locations.
+This makes the representation a viable candidate for issue #31 and future
+StaticVector research, but StaticRingBuffer is not switched to it until
+whole-container performance and layout effects are independently qualified.
 
 ## References
 
