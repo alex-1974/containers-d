@@ -89,7 +89,8 @@ jobs:
         shell: bash
         run: |
           BIN=build/perf-element-end/element-lifetime-end-probe
-          ROUNDS=1048576
+          ROUNDS=4096
+          OPERATIONS=1048576
           RESULTS=build/perf-element-end/results.tsv
 
           printf 'compiler\tvariant\toperations\tIr\tchecksum\n' > "$RESULTS"
@@ -114,7 +115,7 @@ jobs:
             printf '%s\t%s\t%s\t%s\t%s\n' \
               "${{ matrix.compiler }}" \
               "$variant" \
-              "$ROUNDS" \
+              "$OPERATIONS" \
               "$ir" \
               "$checksum" \
               >> "$RESULTS"
