@@ -165,10 +165,32 @@ struct StaticRingBuffer(T, size_t Capacity)
     enum size_t capacity = Capacity;
 
 private:
-    // One aligned byte region owns storage for Capacity potential T objects.
-    // Bytes are intentionally left uninitialized until an element lifetime
-    // begins through emplace.
-    align(T.alignof) ubyte[T.sizeof * Capacity] _storage = void;
+    // The raw bytes are the only storage member used by container logic.
+    //
+    // For indirection-bearing T, an overlapping T[Capacity] member exists only
+    // so D's compiler-generated GC pointer bitmap describes the true potential
+    // pointer offsets inside the raw storage. The union suppresses automatic
+    // payload destruction; live T lifetimes remain managed explicitly.
+    union InlineStorage
+    {
+        static if (hasIndirections!T)
+            T[Capacity] gcShape;
+
+        align(T.alignof) ubyte[T.sizeof * Capacity] bytes;
+    }
+
+    static if (hasIndirections!T)
+    {
+        // Pointer-bearing raw storage must start from a GC-safe .init bitmap
+        // rather than arbitrary bytes that could look like stale roots.
+        InlineStorage _storage = InlineStorage.init;
+    }
+    else
+    {
+        // Pointer-free elements keep the original uninitialized-storage fast
+        // path: no byte is read before a T lifetime is explicitly begun.
+        InlineStorage _storage = void;
+    }
 
     size_t _head;
     size_t _length;
@@ -183,7 +205,7 @@ private:
         // inside the trusted boundary. Callers remain responsible for using the
         // pointer only according to the slot's live-object state.
         return (() @trusted =>
-            cast(T*) (_storage.ptr + physicalIndex * T.sizeof))();
+            cast(T*) (_storage.bytes.ptr + physicalIndex * T.sizeof))();
     }
 
     const(T)* slotPointer(size_t physicalIndex) const scope return nothrow @safe @nogc
@@ -192,7 +214,7 @@ private:
 
         // Same aligned-slot argument as the mutable overload above.
         return (() @trusted =>
-            cast(const(T)*) (_storage.ptr + physicalIndex * T.sizeof))();
+            cast(const(T)*) (_storage.bytes.ptr + physicalIndex * T.sizeof))();
     }
 
     T[] slotSlice(
@@ -293,7 +315,7 @@ private:
         static if (hasIndirections!T)
         {
             const begin = physicalIndex * T.sizeof;
-            _storage[begin .. begin + T.sizeof] = 0;
+            _storage.bytes[begin .. begin + T.sizeof] = 0;
         }
     }
 
@@ -1312,4 +1334,12 @@ unittest
 
     assert(buffer.empty);
     assert(!object.finalized);
+}
+
+unittest
+{
+    // The inline raw-storage representation must advertise possible T
+    // indirections to the GC even though live T objects are managed manually.
+    static assert(hasIndirections!(StaticRingBuffer!(Object, 1)));
+    static assert(!hasIndirections!(StaticRingBuffer!(int, 1)));
 }
