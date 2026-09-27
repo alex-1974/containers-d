@@ -11,8 +11,8 @@
 module containers.ring_buffer;
 
 import containers.internal.element_lifetime :
-    sharedElementCopyConstructible = elementCopyConstructible,
-    sharedSafeLanguageMoveConstructible = safeLanguageMoveConstructible;
+    PlacementMoveOps,
+    sharedElementCopyConstructible = elementCopyConstructible;
 import core.lifetime : emplace, forward, moveEmplace;
 import std.traits : hasElaborateDestructor, hasIndirections, isNested, Unqual;
 
@@ -193,6 +193,8 @@ struct StaticRingBuffer(T, size_t Capacity)
     enum size_t capacity = Capacity;
 
 private:
+    mixin PlacementMoveOps!T;
+
     // The raw bytes are the only storage member used by container logic.
     //
     // For indirection-bearing T, StaticRingStorage overlays T[Capacity] only so
@@ -293,39 +295,9 @@ private:
     }
 
     // Reuse the package-internal language-capability classification while
-    // preserving the existing StaticRingBuffer semantic decisions.
+    // preserving the existing StaticRingBuffer copy contract.
     enum bool elementCopyConstructible =
         sharedElementCopyConstructible!T;
-    enum bool safeLanguageMove =
-        sharedSafeLanguageMoveConstructible!T;
-
-    static if (__traits(hasMoveConstructor, T))
-    {
-        static if (safeLanguageMove)
-        {
-            T* placementMoveConstruct(
-                T* target,
-                ref T source) @trusted
-            {
-                // Safety proof:
-                // - target comes from slotPointer and is aligned storage for T;
-                // - the caller only supplies an unused destination slot;
-                // - source is a distinct live T;
-                // - T's language move construction is independently @safe;
-                // - placement new begins exactly one T lifetime at target.
-                return new (*target) T(__rvalue(source));
-            }
-        }
-        else
-        {
-            T* placementMoveConstruct(
-                T* target,
-                ref T source) @system
-            {
-                return new (*target) T(__rvalue(source));
-            }
-        }
-    }
 
     void clearVacatedSlot(size_t physicalIndex) nothrow @safe @nogc
     {
