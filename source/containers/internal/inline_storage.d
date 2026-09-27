@@ -8,41 +8,57 @@ module containers.internal.inline_storage;
 
 import std.traits : hasElaborateDestructor, hasIndirections, isNested;
 
+private alias NativePointer = void*;
+private enum size_t nativePointerAlignment = NativePointer.alignof;
+
 /**
  * Raw storage payload with a compiler-visible GC scan shape.
  *
- * The T array is never used as an owning array of live T objects. It exists
- * solely so the compiler can describe possible T pointer offsets to the GC.
- * Live T lifetimes are begun and ended explicitly through the byte view.
+ * When slots can start at a runtime-selected aligned offset, an exact T-array
+ * pointer bitmap cannot describe every possible position. In that case an
+ * all-pointer-word overlay deliberately makes the payload conservatively
+ * scannable.
  */
-private union InlineRawStoragePayload(T, size_t Capacity)
+private union InlineRawStoragePayload(
+    T,
+    size_t Capacity,
+    size_t ByteLength,
+    bool ConservativeScan)
 {
     static if (hasIndirections!T)
     {
-        static if (isNested!T)
+        static if (ConservativeScan || isNested!T)
         {
-            // Embedding a nested T can carry its hidden context into the
-            // aggregate. Preserve the existing StaticRingBuffer conservative
-            // scan shape while nested-element semantics remain separate
-            // research.
-            void[T.sizeof * Capacity] conservativeGcShape;
+            enum size_t pointerWordCount =
+                (ByteLength + NativePointer.sizeof - 1) /
+                NativePointer.sizeof;
+
+            NativePointer[pointerWordCount] conservativeGcShape;
         }
         else
         {
+            // Exact scan shape when slot zero is the payload base.
             T[Capacity] gcShape;
         }
     }
 
-    align(T.alignof) ubyte[T.sizeof * Capacity] bytes;
+    ubyte[ByteLength] bytes;
 }
 
 /**
  * Provides Capacity aligned raw slots for T without deciding which slots
  * currently contain live T objects.
  *
+ * Ordinary alignments use the direct payload base and do not reserve padding.
+ * For T aligned more strongly than the native pointer alignment, the storage
+ * reserves T.alignof - 1 bytes of slack and derives an aligned slot base from
+ * the actual runtime address. This avoids relying on an enclosing aggregate to
+ * propagate over-alignment.
+ *
  * For indirection-bearing T, .init starts from a zeroed GC-visible
- * representation. For pointer-free T, the bytes remain uninitialized until an
- * element lifetime is explicitly begun.
+ * representation. Dynamically shifted slots use a conservative pointer-word
+ * scan shape so every possible pointer-bearing slot location remains visible
+ * to the GC.
  */
 package(containers) struct InlineRawStorage(T, size_t Capacity)
 {
@@ -50,16 +66,68 @@ package(containers) struct InlineRawStorage(T, size_t Capacity)
         "InlineRawStorage capacity must be greater than zero");
     static assert(T.sizeof > 0,
         "InlineRawStorage requires an element type with non-zero size");
+    static assert((T.alignof & (T.alignof - 1)) == 0,
+        "InlineRawStorage requires power-of-two T alignment");
 
     enum size_t capacity = Capacity;
 
 private:
-    alias Payload = InlineRawStoragePayload!(T, Capacity);
+    enum bool needsDynamicAlignment =
+        T.alignof > nativePointerAlignment;
 
-    static if (hasIndirections!T)
-        align(T.alignof) Payload _payload = Payload.init;
+    enum size_t alignmentSlack =
+        needsDynamicAlignment ? T.alignof - 1 : 0;
+
+    static assert(
+        Capacity <= (size_t.max - alignmentSlack) / T.sizeof,
+        "InlineRawStorage byte size overflows size_t");
+
+    enum size_t rawByteLength =
+        Capacity * T.sizeof + alignmentSlack;
+
+    alias Payload = InlineRawStoragePayload!(
+        T,
+        Capacity,
+        rawByteLength,
+        needsDynamicAlignment);
+
+    static if (needsDynamicAlignment)
+    {
+        // Deliberately do not over-align the storage wrapper itself. DMD 2.111
+        // does not reliably propagate such alignment when the type is embedded.
+        // The extra bytes below make the slot base independent of wrapper
+        // placement.
+        static if (hasIndirections!T)
+            Payload _payload = Payload.init;
+        else
+            Payload _payload = void;
+    }
     else
-        align(T.alignof) Payload _payload = void;
+    {
+        // Native alignments can keep the compact direct-base representation.
+        static if (hasIndirections!T)
+            align(T.alignof) Payload _payload = Payload.init;
+        else
+            align(T.alignof) Payload _payload = void;
+    }
+
+    size_t slotBaseOffset() const @safe @nogc nothrow
+    {
+        static if (!needsDynamicAlignment)
+        {
+            return 0;
+        }
+        else
+        {
+            const address = (() @trusted =>
+                cast(size_t) _payload.bytes.ptr)();
+
+            const mask = T.alignof - 1;
+            const misalignment = address & mask;
+
+            return (T.alignof - misalignment) & mask;
+        }
+    }
 
 package(containers):
     T* slotPointer(size_t physicalIndex)
@@ -67,8 +135,13 @@ package(containers):
     {
         assert(physicalIndex < Capacity);
 
+        const begin =
+            slotBaseOffset() + physicalIndex * T.sizeof;
+
+        assert(begin <= _payload.bytes.length - T.sizeof);
+
         return (() @trusted =>
-            cast(T*) (_payload.bytes.ptr + physicalIndex * T.sizeof))();
+            cast(T*) (_payload.bytes.ptr + begin))();
     }
 
     const(T)* slotPointer(size_t physicalIndex)
@@ -76,9 +149,13 @@ package(containers):
     {
         assert(physicalIndex < Capacity);
 
+        const begin =
+            slotBaseOffset() + physicalIndex * T.sizeof;
+
+        assert(begin <= _payload.bytes.length - T.sizeof);
+
         return (() @trusted =>
-            cast(const(T)*) (_payload.bytes.ptr +
-                physicalIndex * T.sizeof))();
+            cast(const(T)*) (_payload.bytes.ptr + begin))();
     }
 
     T[] slotSlice(size_t physicalStart, size_t count)
@@ -120,7 +197,9 @@ package(containers):
 
         static if (hasIndirections!T)
         {
-            const begin = physicalIndex * T.sizeof;
+            const begin =
+                slotBaseOffset() + physicalIndex * T.sizeof;
+
             _payload.bytes[begin .. begin + T.sizeof] = 0;
         }
     }
@@ -134,11 +213,16 @@ version (unittest)
         size_t value;
     }
 
-    private struct OverAligned
+    align(64) private struct OverAligned
     {
-        align(64) ubyte value;
+        ubyte value;
     }
 
+    align(64) private struct OverAlignedIndirection
+    {
+        Object reference;
+        size_t value;
+    }
 
     private struct IndirectDestructor
     {
@@ -175,8 +259,8 @@ unittest
 
     Storage storage;
 
-    // Pointer-bearing inline storage starts from a GC-safe zero
-    // representation.
+    // Pointer-bearing native-alignment storage starts from a GC-safe zero
+    // representation and retains the exact T scan shape.
     auto bytes = (() @trusted =>
         cast(ubyte*) storage.slotPointer(0))()[
             0 .. WithIndirection.sizeof * 2];
@@ -198,17 +282,53 @@ unittest
 {
     alias Storage = InlineRawStorage!(OverAligned, 3);
 
-    Storage storage;
+    struct Holder
+    {
+        ubyte prefix;
+        Storage storage;
+    }
 
-    static assert(Storage.alignof >= OverAligned.alignof);
+    Holder holder;
+
+    // The wrapper itself intentionally needs no 64-byte alignment. Every slot
+    // must nevertheless be aligned from the actual embedded address.
+    static assert(Storage.sizeof >=
+        OverAligned.sizeof * Storage.capacity +
+        OverAligned.alignof - 1);
 
     foreach (i; 0 .. Storage.capacity)
     {
-        const address = cast(size_t) storage.slotPointer(i);
+        const address = cast(size_t) holder.storage.slotPointer(i);
         assert(address % OverAligned.alignof == 0);
     }
 }
 
+unittest
+{
+    alias Storage = InlineRawStorage!(OverAlignedIndirection, 2);
+
+    struct Holder
+    {
+        ubyte prefix;
+        Storage storage;
+    }
+
+    static assert(hasIndirections!OverAlignedIndirection);
+    static assert(hasIndirections!Storage);
+
+    Holder holder;
+
+    foreach (i; 0 .. Storage.capacity)
+    {
+        const address = cast(size_t) holder.storage.slotPointer(i);
+        assert(address % OverAlignedIndirection.alignof == 0);
+    }
+
+    // The whole payload starts zeroed because its conservative pointer-word
+    // scan shape must never expose arbitrary stale roots.
+    foreach (value; holder.storage._payload.bytes)
+        assert(value == 0);
+}
 
 unittest
 {
