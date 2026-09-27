@@ -105,11 +105,13 @@ private void constructBuffered(
     new (*slot) OverAlignedReference(probe, 0x5A17);
 }
 
+pragma(inline, false)
 private int bufferedCookie(ref Storage storage) @trusted
 {
     return storage.slotPointer(0).reference.cookie;
 }
 
+pragma(inline, false)
 private void endAndClear(ref Storage storage) @trusted
 {
     auto slot = storage.slotPointer(0);
@@ -118,6 +120,7 @@ private void endAndClear(ref Storage storage) @trusted
 }
 
 
+pragma(inline, false)
 private bool slotBytesAreZero(ref Storage storage) @trusted
 {
     auto bytes = cast(ubyte*) storage.slotPointer(0);
