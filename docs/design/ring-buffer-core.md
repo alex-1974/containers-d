@@ -185,22 +185,40 @@ iterators/ranges and bulk operations are admitted separately.
 ## 8. Borrowed access
 
 References, slices, ranges or segment views into the buffer borrow the
-container's storage.
+container's inline storage.
 
-Their invalidation rules must be documented before they are exposed publicly.
+The first borrowed slice API is the contiguous segment pair described below.
 
-At minimum, structural mutation that begins or ends element lifetimes must be
-assumed to invalidate borrowed views unless a stronger contract is proven.
+Invalidation contract:
+
+- a successful structural mutation that begins or ends an element lifetime
+  invalidates all previously returned segment slices;
+- a failed `tryPushBack` on a full buffer does not mutate the logical
+  sequence and therefore does not invalidate existing segment slices;
+- mutation of a live element through a returned mutable slice is non-structural
+  and is reflected by `front`, `back`, indexing and later segment access;
+- callers must not retain borrowed slices across destruction or move of the
+  owning buffer.
+
+This deliberately conservative rule leaves room for a stronger future
+invalidation guarantee without making the initial contract unsafe.
 
 DIP1000 may strengthen compile-time lifetime checking for consumers, but the
 package must not force preview language switches through `dub.sdl`.
 
 ## 9. Wrapped segment access
 
-A useful low-level ring-buffer operation is access to the live sequence as up
-to two contiguous physical segments.
+`StaticRingBuffer` exposes its live FIFO sequence as at most two contiguous
+borrowed slices:
 
-The eventual contract should be equivalent to:
+```text
+firstSegment()
+secondSegment()
+```
+
+Both have mutable and const overloads.
+
+For every valid state:
 
 ```text
 firstSegment.length + secondSegment.length == length
@@ -209,11 +227,23 @@ logical sequence ==
     firstSegment followed by secondSegment
 ```
 
-When the logical sequence is physically contiguous, the second segment is
-empty.
+Additional rules:
 
-Segment access is not required for the first implementation commit, but the
-storage design must not make it unnecessarily expensive.
+- empty buffer -> both segments are empty;
+- physically contiguous logical contents -> the first segment contains the
+  whole sequence and the second segment is empty;
+- wrapped contents -> the first segment runs from the physical head to the end
+  of inline storage and the second continues from physical slot zero;
+- a full buffer whose head is zero is one contiguous segment;
+- a full buffer whose head is non-zero is represented by two segments in FIFO
+  order;
+- segment access performs no allocation;
+- the ordinary API is intended to remain `@safe @nogc nothrow`;
+- segment slices do not imply thread safety or synchronization.
+
+A dedicated wrapper/result type is intentionally avoided for this first API:
+the two slice accessors expose exactly the two physical regions and introduce
+no additional lifetime-bearing object.
 
 ## 10. Allocation contract
 
