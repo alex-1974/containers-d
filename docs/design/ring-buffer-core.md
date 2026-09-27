@@ -69,6 +69,13 @@ distinguishes those states, so all `Capacity` slots are usable.
 
 ## 4. Element lifetime
 
+Class and interface references are stored values, not owned referents.
+Removing such a slot must not explicitly finalize the referenced GC object.
+Explicit destruction is performed only for element representations with an
+elaborate struct destructor. Vacated indirection-bearing storage is cleared so
+stale pointer bytes do not remain conservative GC roots.
+
+
 Logical emptiness and object lifetime are not the same thing.
 
 The intended generic contract is:
