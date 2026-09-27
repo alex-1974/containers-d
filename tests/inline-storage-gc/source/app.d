@@ -58,6 +58,21 @@ private final class Holder
     Storage storage;
 }
 
+
+pragma(inline, false)
+private Holder createBufferedHolder()
+{
+    auto holder = new Holder;
+    auto probe = new ReachabilityProbe(
+        ReachabilityProbe.Kind.buffered,
+        0x5A17);
+
+    constructBuffered(holder.storage, probe);
+    probe = null;
+
+    return holder;
+}
+
 private __gshared size_t stackSink;
 
 pragma(inline, false)
@@ -102,6 +117,20 @@ private void endAndClear(ref Storage storage) @trusted
     storage.clearVacatedSlot(0);
 }
 
+
+private bool slotBytesAreZero(ref Storage storage) @trusted
+{
+    auto bytes = cast(ubyte*) storage.slotPointer(0);
+
+    foreach (value; bytes[0 .. OverAlignedReference.sizeof])
+    {
+        if (value != 0)
+            return false;
+    }
+
+    return true;
+}
+
 private void collectUntilControl()
 {
     foreach (_; 0 .. 64)
@@ -137,13 +166,7 @@ void main()
 
     createUnrootedControl();
 
-    auto holder = new Holder;
-    auto probe = new ReachabilityProbe(
-        ReachabilityProbe.Kind.buffered,
-        0x5A17);
-
-    constructBuffered(holder.storage, probe);
-    probe = null;
+    auto holder = createBufferedHolder();
 
     const slotAddress =
         cast(size_t) holder.storage.slotPointer(0);
@@ -159,6 +182,7 @@ void main()
     assert(bufferedCookie(holder.storage) == 0x5A17);
 
     endAndClear(holder.storage);
+    assert(slotBytesAreZero(holder.storage));
     assert(ReachabilityProbe.bufferedFinalized == 0);
 
     // Storage remains alive, but its former slot bytes are zero. The former
