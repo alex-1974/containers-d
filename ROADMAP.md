@@ -135,6 +135,9 @@ Feasibility study:
 
 ### M4.2 — Internal lifetime/storage foundation experiment
 
+Tracking: issue #29.  
+Research: `docs/research/m4-2-lifetime-storage-foundation.md`.
+
 Research-only refactoring/probes:
 
 - centralize reusable element construction/move/destruction rules;
