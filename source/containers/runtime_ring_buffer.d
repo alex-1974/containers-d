@@ -62,7 +62,7 @@ public:
      * Capacity zero is valid and produces the same observable inert state as
      * .init.
      */
-    this(size_t capacity) @safe @nogc nothrow
+    this(size_t capacity)
     {
         _storage.initialize(capacity);
     }
@@ -76,7 +76,7 @@ public:
      * Element addresses do not change and no T copy/move constructor runs.
      * The source becomes the inert .init-equivalent state.
      */
-    this(return scope typeof(this) rhs) @safe @nogc nothrow
+    this(return scope typeof(this) rhs)
     {
         _storage.takeOwnershipFrom(rhs._storage);
         _head = rhs._head;
