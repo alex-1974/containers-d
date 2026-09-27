@@ -7,7 +7,7 @@ module containers.runtime_ring_buffer;
 
 import containers.internal.runtime_storage : RuntimeStorageOwner;
 import core.lifetime : emplace, forward;
-import std.traits : hasElaborateDestructor, isNested, Unqual;
+import std.traits : hasElaborateDestructor, hasIndirections, isNested, Unqual;
 
 /**
  * Owning bounded FIFO ring buffer with runtime-selected capacity.
@@ -23,8 +23,8 @@ struct RingBuffer(T)
 {
     static assert(T.sizeof > 0,
         "RingBuffer requires an element type with non-zero size");
-    static assert(!(is(T == struct) && isNested!T),
-        "RingBuffer v0.1 does not support nested/local struct element types");
+    static assert(!(is(T == struct) && isNested!T && hasIndirections!T),
+        "RingBuffer v0.1 does not support nested/local struct element types with hidden context/indirections");
 
 private:
     RuntimeStorageOwner!T _storage;
