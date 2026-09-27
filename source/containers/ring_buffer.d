@@ -15,7 +15,7 @@ import containers.internal.element_lifetime :
     PlacementMoveOps,
     sharedElementCopyConstructible = elementCopyConstructible;
 import core.lifetime : emplace, forward, moveEmplace;
-import std.traits : hasElaborateDestructor, hasIndirections, isNested, Unqual;
+import std.traits : hasIndirections, isNested, Unqual;
 
 private union StaticRingStorage(T, size_t Capacity)
 {
