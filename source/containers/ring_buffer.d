@@ -1094,8 +1094,12 @@ unittest
     const(int)[] second = buffer.secondSegment;
 
     assert(first.length + second.length == buffer.length);
-    assert(first == [2, 3, 4]);
-    assert(second == [5]);
+
+    // Copy construction normalizes logical order into physical slot zero, so
+    // the const copy is intentionally contiguous even though the source was
+    // wrapped.
+    assert(first == [2, 3, 4, 5]);
+    assert(second.length == 0);
 }
 
 unittest
