@@ -11,6 +11,8 @@ import containers.internal.element_lifetime : EndElementLifetimeOps;
 import std.conv : to;
 import std.stdio : stderr, writeln;
 
+enum size_t valueCount = 256;
+
 private __gshared ulong destructionSink;
 
 private struct DestroyValue
@@ -31,6 +33,21 @@ private struct DestroyValue
 private struct MixedInEndOps
 {
     mixin EndElementLifetimeOps!DestroyValue;
+}
+
+
+private void fillValues(
+    ref ulong[valueCount] values) @safe @nogc nothrow
+{
+    ulong state = 0x9E37_79B9_7F4A_7C15UL;
+
+    foreach (i, ref value; values)
+    {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        value = state ^ cast(ulong) i;
+    }
 }
 
 private DestroyValue* rawTarget(
@@ -56,34 +73,44 @@ private void directEnd(DestroyValue* slot)
 }
 
 pragma(inline, false)
-extern(C) ulong bench_direct(size_t rounds)
+extern(C) ulong bench_direct(
+    scope const ulong[] values,
+    size_t rounds)
 {
     align(DestroyValue.alignof) ubyte[DestroyValue.sizeof] raw = void;
     auto slot = rawTarget(raw);
 
     destructionSink = 0;
 
-    foreach (i; 0 .. rounds)
+    foreach (_; 0 .. rounds)
     {
-        constructAt(slot, cast(ulong) i + 1);
-        directEnd(slot);
+        foreach (value; values)
+        {
+            constructAt(slot, value);
+            directEnd(slot);
+        }
     }
 
     return destructionSink;
 }
 
 pragma(inline, false)
-extern(C) ulong bench_shared(size_t rounds)
+extern(C) ulong bench_shared(
+    scope const ulong[] values,
+    size_t rounds)
 {
     align(DestroyValue.alignof) ubyte[DestroyValue.sizeof] raw = void;
     auto slot = rawTarget(raw);
 
     destructionSink = 0;
 
-    foreach (i; 0 .. rounds)
+    foreach (_; 0 .. rounds)
     {
-        constructAt(slot, cast(ulong) i + 1);
-        MixedInEndOps.endElementLifetime(slot);
+        foreach (value; values)
+        {
+            constructAt(slot, value);
+            MixedInEndOps.endElementLifetime(slot);
+        }
     }
 
     return destructionSink;
@@ -99,16 +126,20 @@ void main(string[] args)
     }
 
     const rounds = to!size_t(args[2]);
+
+    ulong[valueCount] values = void;
+    fillValues(values);
+
     ulong checksum;
 
     final switch (args[1])
     {
         case "direct":
-            checksum = bench_direct(rounds);
+            checksum = bench_direct(values[], rounds);
             break;
 
         case "shared":
-            checksum = bench_shared(rounds);
+            checksum = bench_shared(values[], rounds);
             break;
     }
 
