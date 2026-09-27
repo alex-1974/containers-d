@@ -6,7 +6,7 @@
 module containers.runtime_ring_buffer;
 
 import containers.internal.element_lifetime :
-    sharedSafeLanguageMoveConstructible = safeLanguageMoveConstructible;
+    ElementLifetimeOps;
 import containers.internal.runtime_storage : RuntimeStorageOwner;
 import core.lifetime : emplace, forward;
 import std.traits : hasElaborateDestructor, hasIndirections, isNested, Unqual;
@@ -61,35 +61,6 @@ private:
         size_t count) const scope return @trusted @nogc nothrow
     {
         return _storage.slotSlice(physicalStart, count);
-    }
-
-    // Share the language-level move capability probe with the other
-    // container families while preserving RingBuffer's existing behavior.
-    enum bool safeLanguageMove =
-        sharedSafeLanguageMoveConstructible!T;
-
-    static if (__traits(hasMoveConstructor, T))
-    {
-        static if (safeLanguageMove)
-        {
-            T* placementMoveConstruct(
-                T* target,
-                ref T source) @trusted
-            {
-                // target is aligned unused storage owned by this RingBuffer,
-                // and T's language move construction is independently @safe.
-                return new (*target) T(__rvalue(source));
-            }
-        }
-        else
-        {
-            T* placementMoveConstruct(
-                T* target,
-                ref T source) @system
-            {
-                return new (*target) T(__rvalue(source));
-            }
-        }
     }
 
     size_t physicalIndex(size_t logicalIndex) const @safe @nogc nothrow
@@ -327,7 +298,8 @@ public:
             is(U == T) &&
             !__traits(isRef, value))
         {
-            placementMoveConstruct(_storage.slotPointer(physical), value);
+            ElementLifetimeOps!T.placementMoveConstruct(
+                _storage.slotPointer(physical), value);
         }
         else
         {
