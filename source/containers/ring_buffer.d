@@ -1262,7 +1262,7 @@ unittest
     alias Buffer = StaticRingBuffer!(SafeMove, 2);
 
     static assert(__traits(compiles, {
-        () @safe {
+        () @safe @nogc nothrow {
             Buffer source;
             Buffer moved = __rvalue(source);
         }();
