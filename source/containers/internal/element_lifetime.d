@@ -116,6 +116,8 @@ package(containers) mixin template PlacementMoveOps(
 
 version (unittest)
 {
+    import core.lifetime : emplace;
+
     private struct MoveOnly
     {
         int value;
