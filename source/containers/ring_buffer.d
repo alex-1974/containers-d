@@ -155,7 +155,8 @@ version (unittest)
 /// Identity assignment is currently disabled.
 ///
 /// Params:
-///   T = element type
+///   T = element type; nested/local struct types with a hidden outer context
+///       are not supported in the v0.1 API
 ///   Capacity = maximum number of live elements; must be greater than zero
 ///
 /// Init:
@@ -182,6 +183,8 @@ struct StaticRingBuffer(T, size_t Capacity)
         "StaticRingBuffer capacity must be greater than zero");
     static assert(T.sizeof > 0,
         "StaticRingBuffer requires an element type with non-zero size");
+    static assert(!(is(T == struct) && isNested!T),
+        "StaticRingBuffer v0.1 does not support nested/local struct element types");
 
     /// Compile-time maximum number of live elements.
     enum size_t capacity = Capacity;
@@ -452,7 +455,12 @@ public:
         return _length == Capacity;
     }
 
-    /// Returns a mutable reference to the logical front element.
+    /**
+     * Returns a mutable reference to the logical front element.
+     *
+     * Preconditions:
+     *   The buffer is not empty.
+     */
     ref T front()
     {
         assert(!empty);
@@ -466,7 +474,12 @@ public:
         return *slotPointer(_head);
     }
 
-    /// Returns a mutable reference to the logical back element.
+    /**
+     * Returns a mutable reference to the logical back element.
+     *
+     * Preconditions:
+     *   The buffer is not empty.
+     */
     ref T back()
     {
         assert(!empty);
@@ -480,7 +493,12 @@ public:
         return *slotPointer(physicalIndex(_length - 1));
     }
 
-    /// Returns a mutable reference to an element by logical FIFO index.
+    /**
+     * Returns a mutable reference to an element by logical FIFO index.
+     *
+     * Preconditions:
+     *   logicalIndex is less than length.
+     */
     ref T opIndex(size_t logicalIndex)
     {
         assert(logicalIndex < _length);
@@ -596,7 +614,11 @@ public:
      * Returns false when full. On that path the logical sequence is unchanged
      * and the container performs no allocation or element construction.
      *
-     * The argument category is forwarded to T's construction.
+     * Lvalues use the ordinary `core.lifetime.emplace` construction path.
+     * For an exact T rvalue whose type defines a D language move constructor,
+     * the move constructor is invoked directly at the final slot address. This
+     * avoids depending on the unresolved rvalue behavior of
+     * `core.lifetime.emplace` tracked in issue #8.
      *
      * Returns:
      *   `true` when a new element was constructed; `false` when already full.
@@ -618,7 +640,18 @@ public:
             return false;
 
         const insertionIndex = physicalIndex(_length);
-        emplace(slotPointer(insertionIndex), forward!value);
+
+        static if (__traits(hasMoveConstructor, T) &&
+            is(U == T) &&
+            !__traits(isRef, value))
+        {
+            placementMoveConstruct(slotPointer(insertionIndex), value);
+        }
+        else
+        {
+            emplace(slotPointer(insertionIndex), forward!value);
+        }
+
         ++_length;
         return true;
     }
@@ -956,6 +989,21 @@ unittest
 
     assert(Tracked.alive == 0);
     assert(Tracked.destroyed == 3);
+}
+
+
+unittest
+{
+    // Rvalue insertion of a language-move element must invoke T.this(T) at the
+    // final slot address rather than relying on core.lifetime.emplace.
+    alias MoveOnly = MoveOnlyTestElement;
+
+    auto seed = MoveOnly(73);
+    StaticRingBuffer!(MoveOnly, 1) buffer;
+
+    assert(buffer.tryPushBack(__rvalue(seed)));
+    assert(seed.value == -1);
+    assert(buffer.front.value == 73);
 }
 
 unittest
@@ -1361,9 +1409,9 @@ unittest
 
 unittest
 {
-    // A nested indirection-bearing element must not make the raw-storage
-    // overlay itself require an outer context. The fallback is deliberately
-    // conservative until issue #10 resolves nested-element semantics.
+    // v0.1 deliberately rejects nested/local struct element types. Their
+    // hidden context/frame semantics require a separate contract before raw
+    // container storage can admit them safely (issue #10).
     int outer;
 
     struct NestedElement
@@ -1375,7 +1423,5 @@ unittest
     }
 
     static assert(isNested!NestedElement);
-    static assert(hasIndirections!NestedElement);
-    static assert(__traits(compiles, StaticRingBuffer!(NestedElement, 2)()));
-    static assert(hasIndirections!(StaticRingBuffer!(NestedElement, 2)));
+    static assert(!__traits(compiles, StaticRingBuffer!(NestedElement, 2)()));
 }
