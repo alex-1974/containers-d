@@ -65,7 +65,7 @@ private:
     size_t _head;
     size_t _length;
 
-    T* slotPointer(size_t physicalIndex) nothrow @safe @nogc
+    T* slotPointer(size_t physicalIndex) return scope nothrow @safe @nogc
     {
         assert(physicalIndex < Capacity);
 
@@ -78,13 +78,44 @@ private:
             cast(T*) (_storage.ptr + physicalIndex * T.sizeof))();
     }
 
-    const(T)* slotPointer(size_t physicalIndex) const nothrow @safe @nogc
+    const(T)* slotPointer(size_t physicalIndex) const return scope nothrow @safe @nogc
     {
         assert(physicalIndex < Capacity);
 
         // Same aligned-slot argument as the mutable overload above.
         return (() @trusted =>
             cast(const(T)*) (_storage.ptr + physicalIndex * T.sizeof))();
+    }
+
+    T[] slotSlice(
+        size_t physicalStart,
+        size_t count) return scope nothrow @safe @nogc
+    {
+        if (count == 0)
+            return null;
+
+        assert(physicalStart < Capacity);
+        assert(count <= Capacity - physicalStart);
+
+        // Pointer slicing is the single operation the compiler cannot prove
+        // safe here. slotPointer has already established the aligned slot
+        // address; count is bounded to the same inline storage region.
+        return (() @trusted =>
+            slotPointer(physicalStart)[0 .. count])();
+    }
+
+    const(T)[] slotSlice(
+        size_t physicalStart,
+        size_t count) const return scope nothrow @safe @nogc
+    {
+        if (count == 0)
+            return null;
+
+        assert(physicalStart < Capacity);
+        assert(count <= Capacity - physicalStart);
+
+        return (() @trusted =>
+            slotPointer(physicalStart)[0 .. count])();
     }
 
     size_t physicalIndex(size_t logicalIndex) const nothrow @safe @nogc
@@ -266,6 +297,102 @@ public:
     {
         assert(logicalIndex < _length);
         return *slotPointer(physicalIndex(logicalIndex));
+    }
+
+    /**
+     * Returns the first contiguous physical segment in logical FIFO order.
+     *
+     * The returned slice borrows this buffer's inline storage. Successful
+     * structural mutation invalidates previously returned segment slices.
+     *
+     * Returns:
+     *   The whole logical sequence when physically contiguous, the tail-side
+     *   portion when wrapped, or an empty slice when the buffer is empty.
+     *
+     * Complexity:
+     *   O(1).
+     *
+     * Allocation:
+     *   None.
+     */
+    T[] firstSegment() return scope nothrow @safe @nogc
+    {
+        if (empty)
+            return null;
+
+        const physicalRemaining = Capacity - _head;
+        const count = _length < physicalRemaining
+            ? _length
+            : physicalRemaining;
+
+        return slotSlice(_head, count);
+    }
+
+    /// ditto
+    const(T)[] firstSegment() const return scope nothrow @safe @nogc
+    {
+        if (empty)
+            return null;
+
+        const physicalRemaining = Capacity - _head;
+        const count = _length < physicalRemaining
+            ? _length
+            : physicalRemaining;
+
+        return slotSlice(_head, count);
+    }
+
+    /**
+     * Returns the wrapped continuation after $(LREF firstSegment).
+     *
+     * The returned slice borrows this buffer's inline storage and is empty
+     * whenever the logical sequence is physically contiguous.
+     *
+     * Complexity:
+     *   O(1).
+     *
+     * Allocation:
+     *   None.
+     */
+    T[] secondSegment() return scope nothrow @safe @nogc
+    {
+        if (empty)
+            return null;
+
+        const firstCount = firstSegment.length;
+        const secondCount = _length - firstCount;
+        return slotSlice(0, secondCount);
+    }
+
+    /// ditto
+    const(T)[] secondSegment() const return scope nothrow @safe @nogc
+    {
+        if (empty)
+            return null;
+
+        const firstCount = firstSegment.length;
+        const secondCount = _length - firstCount;
+        return slotSlice(0, secondCount);
+    }
+
+    ///
+    unittest
+    {
+        StaticRingBuffer!(int, 4) buffer;
+        assert(buffer.tryPushBack(10));
+        assert(buffer.tryPushBack(20));
+        assert(buffer.tryPushBack(30));
+        buffer.popFront();
+        buffer.popFront();
+        assert(buffer.tryPushBack(40));
+        assert(buffer.tryPushBack(50));
+        assert(buffer.tryPushBack(60));
+
+        assert(buffer.firstSegment == [30, 40]);
+        assert(buffer.secondSegment == [50, 60]);
+
+        buffer.secondSegment[0] = 51;
+        assert(buffer[2] == 51);
     }
 
     /**
@@ -906,4 +1033,84 @@ unittest
 
     // The independent seed owns and releases its own copied resource token.
     assert(RelocatableOwner.releases == 4);
+}
+
+unittest
+{
+    // Empty and capacity-one segment laws.
+    StaticRingBuffer!(int, 1) buffer;
+
+    assert(buffer.firstSegment.empty);
+    assert(buffer.secondSegment.empty);
+
+    assert(buffer.tryPushBack(7));
+    assert(buffer.firstSegment == [7]);
+    assert(buffer.secondSegment.empty);
+
+    buffer.popFront();
+    assert(buffer.firstSegment.empty);
+    assert(buffer.secondSegment.empty);
+}
+
+unittest
+{
+    // Full buffer at head zero is one physical segment; after one pop/push it is
+    // full with a non-zero head and therefore splits into two FIFO segments.
+    StaticRingBuffer!(int, 4) buffer;
+
+    foreach (value; 1 .. 5)
+        assert(buffer.tryPushBack(value));
+
+    assert(buffer.firstSegment == [1, 2, 3, 4]);
+    assert(buffer.secondSegment.empty);
+
+    buffer.popFront();
+    assert(buffer.tryPushBack(5));
+
+    assert(buffer.firstSegment == [2, 3, 4]);
+    assert(buffer.secondSegment == [5]);
+
+    size_t logicalIndex;
+    foreach (value; buffer.firstSegment)
+        assert(value == buffer[logicalIndex++]);
+    foreach (value; buffer.secondSegment)
+        assert(value == buffer[logicalIndex++]);
+    assert(logicalIndex == buffer.length);
+}
+
+unittest
+{
+    // Const access preserves the same segmentation and element qualification.
+    StaticRingBuffer!(int, 4) mutableBuffer;
+    assert(mutableBuffer.tryPushBack(1));
+    assert(mutableBuffer.tryPushBack(2));
+    mutableBuffer.popFront();
+    assert(mutableBuffer.tryPushBack(3));
+    assert(mutableBuffer.tryPushBack(4));
+    assert(mutableBuffer.tryPushBack(5));
+
+    const buffer = mutableBuffer;
+    const(int)[] first = buffer.firstSegment;
+    const(int)[] second = buffer.secondSegment;
+
+    assert(first.length + second.length == buffer.length);
+    assert(first == [2, 3, 4]);
+    assert(second == [5]);
+}
+
+unittest
+{
+    // The segment API itself is allocation-free and callable from ordinary
+    // @safe @nogc nothrow code for a trivial element type.
+    alias Buffer = StaticRingBuffer!(int, 8);
+
+    static assert(__traits(compiles, {
+        () @safe @nogc nothrow {
+            Buffer buffer;
+            assert(buffer.tryPushBack(1));
+            auto first = buffer.firstSegment;
+            auto second = buffer.secondSegment;
+            assert(first.length + second.length == buffer.length);
+        }();
+    }));
 }
