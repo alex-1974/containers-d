@@ -6,7 +6,7 @@
  */
 module containers.internal.inline_storage;
 
-import std.traits : hasIndirections, isNested;
+import std.traits : hasElaborateDestructor, hasIndirections, isNested;
 
 /**
  * Raw storage payload with a compiler-visible GC scan shape.
@@ -138,6 +138,14 @@ version (unittest)
     {
         align(64) ubyte value;
     }
+
+
+    private struct IndirectDestructor
+    {
+        Object reference;
+
+        ~this() {}
+    }
 }
 
 unittest
@@ -199,4 +207,18 @@ unittest
         const address = cast(size_t) storage.slotPointer(i);
         assert(address % OverAligned.alignof == 0);
     }
+}
+
+
+unittest
+{
+    alias Storage = InlineRawStorage!(IndirectDestructor, 2);
+
+    static assert(hasIndirections!IndirectDestructor);
+    static assert(hasElaborateDestructor!IndirectDestructor);
+
+    // Raw storage owns bytes, not T lifetimes. The union scan-shape member must
+    // therefore not make the storage wrapper itself automatically destroy
+    // potential T slots.
+    static assert(!hasElaborateDestructor!Storage);
 }
