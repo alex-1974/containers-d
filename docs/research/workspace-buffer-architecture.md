@@ -33,6 +33,61 @@ Every candidate is evaluated by:
 9. element-lifetime complexity;
 10. whether the abstraction is domain-independent.
 
+## Adaptability without speculative over-generalization
+
+The architecture must avoid two opposite failures:
+
+1. over-optimizing a container for one current consumer;
+2. freezing a narrow implementation so tightly that a proven future consumer
+   requires an API-breaking redesign.
+
+The default rule is therefore:
+
+> Keep the semantic contract narrow and stable, while preserving internal
+> implementation freedom and deliberate extension points.
+
+Adaptability does **not** mean exposing every conceivable allocator, growth,
+overflow, storage, synchronization, or policy choice as a public template
+parameter from the first release.
+
+Prefer the following order:
+
+1. define the smallest semantic contract justified by current consumers;
+2. keep storage and algorithm layers separable internally where evidence shows
+   they may vary;
+3. expose only extension points that already have at least two materially
+   different real consumer requirements;
+4. use adapters/wrappers for domain-specific semantics;
+5. add a new type family when semantics differ materially rather than adding
+   mode flags to one universal container.
+
+Examples:
+
+- `RingBuffer!T` stays single-threaded; a future `BlockingQueue!T` wraps
+  bounded FIFO storage instead of adding a `threadSafe` switch.
+- `UniqueBuffer!T` should permit later storage/backend evolution without
+  pretending to replace raster-d's richer external-resource ownership model.
+- `StaticVector!(T, N)` may become the storage primitive below a
+  geometry-specific `ExpansionBuffer!N` wrapper.
+- caller-workspace algorithms in geo-d/osm-d/raster-d remain callable with raw
+  slices; optional owning scratch helpers must not make the algorithm depend on
+  one allocator.
+- domain structures such as PieceTree, RasterBuffer, GPU upload rings, and
+  imagery caches may compose generic primitives but retain their own semantics.
+
+Internal seams may therefore be designed ahead of public exposure, but hidden
+extension machinery is not itself a compatibility promise. Public
+customization is admitted only after consumer evidence and benchmark/safety
+qualification.
+
+A candidate's research gate must explicitly answer:
+
+- which semantic properties are invariant;
+- which implementation dimensions may vary later;
+- which variation belongs in composition/wrappers;
+- which variation, if any, justifies a public policy parameter;
+- whether adding that extension later can be done source-compatibly.
+
 ## Consumer inventory
 
 ### dcanvas-dev
