@@ -63,6 +63,27 @@ package(containers) enum bool elementHasIndirections(T) =
  * HasMove and SafeMove capture the centrally classified T traits at template
  * instantiation so the mixed code has no additional import requirements.
  */
+/**
+ * Injects element destruction for one live T object.
+ *
+ * This operation intentionally stops at the language lifetime boundary. It
+ * does not clear the backing bytes after destruction; vacated-slot sanitation
+ * belongs to the storage implementation because GC visibility is a property of
+ * the backing storage.
+ */
+package(containers) mixin template EndElementLifetimeOps(
+    T,
+    bool NeedsDestroy = elementNeedsDestruction!T)
+{
+    private static void endElementLifetime(T* slot)
+    {
+        assert(slot !is null);
+
+        static if (NeedsDestroy)
+            destroy!false(*slot);
+    }
+}
+
 package(containers) mixin template PlacementMoveOps(
     T,
     bool HasMove = hasLanguageMoveConstructor!T,
@@ -153,6 +174,16 @@ version (unittest)
         }
     }
 
+    private struct DestructorOps
+    {
+        mixin EndElementLifetimeOps!WithDestructor;
+    }
+
+    private struct TrivialEndOps
+    {
+        mixin EndElementLifetimeOps!int;
+    }
+
     private struct MoveOnlyOps
     {
         mixin PlacementMoveOps!MoveOnly;
@@ -241,4 +272,45 @@ unittest
     assert(source.self is null);
 
     destroy!false(*placed);
+}
+
+
+unittest
+{
+    // The shared operation ends the language lifetime exactly once for a type
+    // with an elaborate destructor.
+    static int destroyed;
+
+    struct CountedDestructor
+    {
+        ~this()
+        {
+            ++destroyed;
+        }
+    }
+
+    struct CountedDestructorOps
+    {
+        mixin EndElementLifetimeOps!CountedDestructor;
+    }
+
+    align(CountedDestructor.alignof)
+        ubyte[CountedDestructor.sizeof] raw = void;
+
+    auto slot = (() @trusted =>
+        cast(CountedDestructor*) raw.ptr)();
+
+    emplace(slot);
+    destroyed = 0;
+
+    CountedDestructorOps.endElementLifetime(slot);
+    assert(destroyed == 1);
+}
+
+unittest
+{
+    // For a trivial T, ending the language lifetime requires no destructor.
+    int value = 42;
+    TrivialEndOps.endElementLifetime(&value);
+    assert(value == 42);
 }
