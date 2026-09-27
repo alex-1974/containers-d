@@ -1,6 +1,6 @@
 module move_constructor_raw_storage_probe;
 
-import core.lifetime : destroy, emplace, moveEmplace;
+import core.lifetime : emplace, moveEmplace;
 import std.stdio : writeln;
 
 struct Counters
