@@ -10,6 +10,9 @@
  */
 module containers.ring_buffer;
 
+import containers.internal.element_lifetime :
+    sharedElementCopyConstructible = elementCopyConstructible,
+    sharedSafeLanguageMoveConstructible = safeLanguageMoveConstructible;
 import core.lifetime : emplace, forward, moveEmplace;
 import std.traits : hasElaborateDestructor, hasIndirections, isNested, Unqual;
 
@@ -289,27 +292,12 @@ private:
         }
     }
 
-    // Define the container copy contract by the language operation we
-    // actually require: construction of T from an lvalue T. Phobos
-    // isCopyable changed semantics across the controlled compiler matrix and
-    // is therefore too broad for this ownership contract.
-    enum bool elementCopyConstructible = __traits(compiles, {
-        void probe(ref T source)
-        {
-            T copy = source;
-        }
-    });
-
-    // Check whether ordinary language move construction of T is permitted
-    // from @safe code. Placement new itself is @system, so the raw-storage
-    // helper below may only elevate that operation to @trusted when T's
-    // constructor contract is independently @safe.
-    enum bool safeLanguageMove = __traits(compiles, {
-        void probe(ref T source) @safe
-        {
-            T target = __rvalue(source);
-        }
-    });
+    // Reuse the package-internal language-capability classification while
+    // preserving the existing StaticRingBuffer semantic decisions.
+    enum bool elementCopyConstructible =
+        sharedElementCopyConstructible!T;
+    enum bool safeLanguageMove =
+        sharedSafeLanguageMoveConstructible!T;
 
     static if (__traits(hasMoveConstructor, T))
     {
