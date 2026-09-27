@@ -29,6 +29,36 @@ private:
     size_t _head;
     size_t _length;
 
+    ref T borrowedSlot(
+        size_t physicalIndex) scope return @trusted
+    {
+        // RuntimeStorageOwner owns this heap allocation uniquely. The compiler
+        // sees only a stored pointer value and cannot prove that its lifetime
+        // ends with this RingBuffer. This helper is the narrow bridge from
+        // internal pointer provenance to the public owner-borrow contract.
+        return *_storage.slotPointer(physicalIndex);
+    }
+
+    ref const(T) borrowedSlot(
+        size_t physicalIndex) const scope return @trusted
+    {
+        return *_storage.slotPointer(physicalIndex);
+    }
+
+    T[] borrowedSlice(
+        size_t physicalStart,
+        size_t count) scope return @trusted @nogc nothrow
+    {
+        return _storage.slotSlice(physicalStart, count);
+    }
+
+    const(T)[] borrowedSlice(
+        size_t physicalStart,
+        size_t count) const scope return @trusted @nogc nothrow
+    {
+        return _storage.slotSlice(physicalStart, count);
+    }
+
     size_t physicalIndex(size_t logicalIndex) const @safe @nogc nothrow
     {
         assert(logicalIndex < capacity);
@@ -130,7 +160,7 @@ public:
     ref T front() scope return
     {
         assert(!empty);
-        return *_storage.slotPointer(_head);
+        return borrowedSlot(_head);
     }
 
     /// ditto
@@ -144,7 +174,7 @@ public:
     ref T back() scope return
     {
         assert(!empty);
-        return *_storage.slotPointer(physicalIndex(_length - 1));
+        return borrowedSlot(physicalIndex(_length - 1));
     }
 
     /// ditto
@@ -158,7 +188,7 @@ public:
     ref T opIndex(size_t logicalIndex) scope return
     {
         assert(logicalIndex < _length);
-        return *_storage.slotPointer(physicalIndex(logicalIndex));
+        return borrowedSlot(physicalIndex(logicalIndex));
     }
 
     /// ditto
@@ -185,7 +215,7 @@ public:
             ? _length
             : physicalRemaining;
 
-        return _storage.slotSlice(_head, count);
+        return borrowedSlice(_head, count);
     }
 
     /// ditto
@@ -214,7 +244,7 @@ public:
             return null;
 
         const firstCount = firstSegment.length;
-        return _storage.slotSlice(0, _length - firstCount);
+        return borrowedSlice(0, _length - firstCount);
     }
 
     /// ditto
