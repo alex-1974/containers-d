@@ -702,19 +702,19 @@ unittest
 
 unittest
 {
-    // Trivial-element steady-state and owner move are usable from
-    // @safe @nogc nothrow code.
+    // Trivial-element construction and steady-state operations are usable from
+    // @safe @nogc nothrow code across the supported frontend matrix.
+    // Whole-owner move is validated separately because frontend 2.112+
+    // disallows the __rvalue(local) expression itself in @safe functions.
     static assert(__traits(compiles, {
         () @safe @nogc nothrow {
-            auto source = RingBuffer!int(5);
+            auto buffer = RingBuffer!int(5);
 
-            assert(source.tryPushBack(1));
-            assert(source.tryPushBack(2));
-            source.popFront();
-
-            auto moved = __rvalue(source);
-            assert(moved.front == 2);
-            moved.clear();
+            assert(buffer.tryPushBack(1));
+            assert(buffer.tryPushBack(2));
+            buffer.popFront();
+            assert(buffer.front == 2);
+            buffer.clear();
         }();
     }));
 }
