@@ -5,7 +5,9 @@
  */
 module containers.runtime_ring_buffer;
 
-import containers.internal.element_lifetime : PlacementMoveOps;
+import containers.internal.element_lifetime :
+    EndElementLifetimeOps,
+    PlacementMoveOps;
 import containers.internal.runtime_storage : RuntimeStorageOwner;
 import core.lifetime : emplace, forward;
 import std.traits : hasElaborateDestructor, hasIndirections, isNested, Unqual;
@@ -29,6 +31,7 @@ struct RingBuffer(T)
 
 private:
     mixin PlacementMoveOps!T;
+    mixin EndElementLifetimeOps!T;
 
     RuntimeStorageOwner!T _storage;
     size_t _head;
@@ -82,9 +85,7 @@ private:
 
     void endSlotLifetime(size_t physicalIndex)
     {
-        static if (hasElaborateDestructor!T)
-            destroy!false(*_storage.slotPointer(physicalIndex));
-
+        endElementLifetime(_storage.slotPointer(physicalIndex));
         _storage.clearVacatedSlot(physicalIndex);
     }
 
