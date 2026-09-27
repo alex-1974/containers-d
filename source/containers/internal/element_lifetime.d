@@ -87,6 +87,41 @@ if (hasLanguageMoveConstructor!T &&
     return new (*target) T(__rvalue(source));
 }
 
+/**
+ * Injects the placement-move bridge into the consuming aggregate.
+ *
+ * Research purpose: DMD 2.111 does not inline the equivalent imported helper
+ * across the module boundary in the M4.2 probe. A typed mixin keeps the shared
+ * source definition while placing the generated function in the consumer's
+ * scope. It injects no state and refers to no host fields.
+ */
+package(containers) mixin template PlacementMoveOps(T)
+{
+    static if (hasLanguageMoveConstructor!T)
+    {
+        static if (safeLanguageMoveConstructible!T)
+        {
+            private T* placementMoveConstruct(
+                T* target,
+                ref T source) @trusted
+            {
+                assert(target !is null);
+                return new (*target) T(__rvalue(source));
+            }
+        }
+        else
+        {
+            private T* placementMoveConstruct(
+                T* target,
+                ref T source) @system
+            {
+                assert(target !is null);
+                return new (*target) T(__rvalue(source));
+            }
+        }
+    }
+}
+
 package(containers) struct ElementLifetimeOps(T)
 {
     static if (hasLanguageMoveConstructor!T)
