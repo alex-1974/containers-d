@@ -22,7 +22,7 @@ private struct DestroyValue
         this.value = value;
     }
 
-    ~this() @safe @nogc nothrow
+    ~this() @nogc nothrow
     {
         destructionSink += value;
     }
@@ -56,7 +56,7 @@ private void directEnd(DestroyValue* slot)
 }
 
 pragma(inline, false)
-extern(C) ulong bench_direct(size_t rounds) @safe
+extern(C) ulong bench_direct(size_t rounds)
 {
     align(DestroyValue.alignof) ubyte[DestroyValue.sizeof] raw = void;
     auto slot = rawTarget(raw);
@@ -73,7 +73,7 @@ extern(C) ulong bench_direct(size_t rounds) @safe
 }
 
 pragma(inline, false)
-extern(C) ulong bench_shared(size_t rounds) @safe
+extern(C) ulong bench_shared(size_t rounds)
 {
     align(DestroyValue.alignof) ubyte[DestroyValue.sizeof] raw = void;
     auto slot = rawTarget(raw);
