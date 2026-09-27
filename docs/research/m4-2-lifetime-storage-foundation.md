@@ -264,3 +264,94 @@ The accepted rule from this experiment is:
 - mixins must inject no hidden state and should not depend implicitly on host
   field names;
 - each such use needs a direct baseline probe before admission.
+
+
+## Lifetime end versus vacated-slot sanitation
+
+The next factoring step exposed a second important boundary.
+
+Ending a live T lifetime and sanitizing the now-unused backing bytes are related
+in container control flow but are not the same responsibility.
+
+### Language lifetime
+
+For a live struct T with an elaborate destructor, containers-d uses:
+
+```d
+destroy!false(*slot);
+```
+
+This runs the language destructor without resetting the object to `.init`.
+After the call the slot no longer contains a valid T object.
+
+For T without an elaborate destructor, no destructor operation is required.
+
+M4.2 now models this through the package-internal typed mixin:
+
+```d
+EndElementLifetimeOps!T
+```
+
+The helper receives a T pointer and stops at the D language lifetime boundary.
+
+### Storage sanitation
+
+A vacated raw slot may still contain byte patterns that represent GC-visible
+pointers.
+
+Whether and how those bytes must be cleared depends on the backing storage and
+its GC visibility, not on T's destructor semantics.
+
+RuntimeStorageOwner already owns this operation:
+
+```d
+storage.clearVacatedSlot(index);
+```
+
+For indirection-bearing T it zeroes the corresponding T-sized byte region; for
+pointer-free T the operation compiles to a no-op.
+
+The storage research contract now makes this distinction explicit:
+
+```text
+isRawSlotStorage!(S, T)
+    capacity
+    slotPointer
+    slotSlice
+
+isReusableRawSlotStorage!(S, T)
+    all raw-slot borrowing operations
+    +
+    clearVacatedSlot
+```
+
+The second concept is appropriate for storage that is repeatedly used for
+construct/destroy/reconstruct cycles.
+
+### Consequence
+
+Do not create a generic helper that implicitly reaches into a host container's
+`_storage` field.
+
+The intended composition is instead:
+
+```text
+family/container control flow
+        |
+        +-- EndElementLifetimeOps!T
+        |       ends T lifetime
+        |
+        +-- storage.clearVacatedSlot(index)
+                removes stale storage roots/bytes as required
+```
+
+This preserves independent evolution of:
+
+- D language object-lifetime rules;
+- inline/raw storage representation;
+- runtime owned storage;
+- future external/pool storage.
+
+The next gate is performance qualification of `EndElementLifetimeOps!T`
+against the current direct `destroy!false` form before either ring container
+is switched to it.
