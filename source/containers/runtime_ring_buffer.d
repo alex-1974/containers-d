@@ -1,8 +1,7 @@
 /**
  * Runtime-capacity owning FIFO ring buffer.
  *
- * This module is provisional during the M3.2 public-admission gate. RingBuffer
- * is directly importable here but is not yet re-exported from the package root.
+ * RingBuffer is also re-exported from the package-root `containers` module.
  */
 module containers.runtime_ring_buffer;
 
@@ -16,8 +15,9 @@ import std.traits : hasElaborateDestructor, Unqual;
  * The backing storage is acquired once at construction and retained across
  * push/pop/clear operations. Exactly length slots contain live T objects.
  *
- * This type is not yet re-exported from the package root while its public
- * admission gate is being completed.
+ * Copy construction is disabled because backing storage is uniquely owned.
+ * Whole-buffer move transfers ownership in O(1) without relocating live
+ * elements.
  */
 struct RingBuffer(T)
 {
@@ -304,6 +304,17 @@ public:
         while (!empty)
             popFront();
     }
+}
+
+///
+unittest
+{
+    auto queue = RingBuffer!int(4);
+    assert(queue.tryPushBack(10));
+    assert(queue.tryPushBack(20));
+    queue.popFront();
+    assert(queue.front == 20);
+    assert(queue.capacity == 4);
 }
 
 version (unittest)
