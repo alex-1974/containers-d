@@ -39,11 +39,21 @@ void main()
 
     writeln("storage-align ", CandidateStorage.alignof);
     writeln("storage-holder-offset ", StorageHolder.storage.offsetof);
-    writeln("storage-sufficient ",
-        CandidateStorage.alignof >= OverAligned64.alignof &&
-        StorageHolder.storage.offsetof % OverAligned64.alignof == 0 ? 1 : 0);
 
-    // Research-only probe: do not turn the discovered DMD difference into a
-    // passing/failing build condition here. Issue #31 owns the correction and
-    // will promote this observation to a gate once a representation is chosen.
+    StorageHolder storageHolder;
+    const storageSlotAddress =
+        cast(size_t) storageHolder.storage.slotPointer(0);
+
+    writeln("storage-slot-address-mod-element-align ",
+        storageSlotAddress % OverAligned64.alignof);
+    writeln("storage-slot-sufficient ",
+        storageSlotAddress % OverAligned64.alignof == 0 ? 1 : 0);
+
+    // The reusable storage candidate deliberately does not require the wrapper
+    // field itself to inherit T's over-alignment. It reserves slack and aligns
+    // the actual T slot from the runtime address.
+    assert(storageSlotAddress % OverAligned64.alignof == 0);
+
+    // The current ring figures remain observational. Issue #31 owns its
+    // released-contract correction.
 }
