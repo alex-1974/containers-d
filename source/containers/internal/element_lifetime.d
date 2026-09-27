@@ -53,47 +53,15 @@ package(containers) enum bool elementHasIndirections(T) =
 
 
 /**
- * Audited language-level element operations for raw-slot containers.
+ * Injects the audited placement-move bridge into a consuming aggregate.
  *
- * This is intentionally not a policy surface. It centralizes operations whose
- * correctness depends on D object-lifetime rules so that container families do
- * not each recreate their own trusted placement-construction bridge.
- */
-/**
- * Move-construct T directly in an unused, suitably aligned slot.
- *
- * Function-template form: the operation is instantiated for T at the consumer
- * and preserves the @safe/@system distinction through mutually exclusive
- * template constraints.
- */
-package(containers) T* placementMoveConstruct(T)(
-    T* target,
-    ref T source) @trusted
-if (hasLanguageMoveConstructor!T &&
-    safeLanguageMoveConstructible!T)
-{
-    assert(target !is null);
-    return new (*target) T(__rvalue(source));
-}
-
-/// ditto
-package(containers) T* placementMoveConstruct(T)(
-    T* target,
-    ref T source) @system
-if (hasLanguageMoveConstructor!T &&
-    !safeLanguageMoveConstructible!T)
-{
-    assert(target !is null);
-    return new (*target) T(__rvalue(source));
-}
-
-/**
- * Injects the placement-move bridge into the consuming aggregate.
- *
- * Research purpose: DMD 2.111 does not inline the equivalent imported helper
- * across the module boundary in the M4.2 probe. A typed mixin keeps the shared
- * source definition while placing the generated function in the consumer's
+ * DMD 2.111 does not inline the equivalent imported helper across the module
+ * boundary in the M4.2 instruction-count probe. A typed template mixin keeps
+ * the source definition shared while generating the helper in the consumer's
  * scope. It injects no state and refers to no host fields.
+ *
+ * HasMove and SafeMove capture the centrally classified T traits at template
+ * instantiation so the mixed code has no additional import requirements.
  */
 package(containers) mixin template PlacementMoveOps(
     T,
@@ -115,51 +83,6 @@ package(containers) mixin template PlacementMoveOps(
         else
         {
             private static T* placementMoveConstruct(
-                T* target,
-                ref T source) @system
-            {
-                assert(target !is null);
-                return new (*target) T(__rvalue(source));
-            }
-        }
-    }
-}
-
-package(containers) struct ElementLifetimeOps(T)
-{
-    static if (hasLanguageMoveConstructor!T)
-    {
-        static if (safeLanguageMoveConstructible!T)
-        {
-            /**
-             * Move-construct T directly in an unused, suitably aligned slot.
-             *
-             * The caller owns the proof that target denotes unused storage for
-             * exactly one T and does not overlap source. T's own language move
-             * construction has independently been shown callable from @safe
-             * code, so only placement-new's raw-storage transition is trusted.
-             */
-            pragma(inline, true)
-            static T* placementMoveConstruct(
-                T* target,
-                ref T source) @trusted
-            {
-                assert(target !is null);
-                return new (*target) T(__rvalue(source));
-            }
-        }
-        else
-        {
-            /**
-             * Same raw-slot operation for T whose language move constructor is
-             * not callable from @safe code.
-             *
-             * The helper intentionally remains @system; containers-d must not
-             * upgrade an unsafe element operation merely because the target
-             * slot itself is valid.
-             */
-            pragma(inline, true)
-            static T* placementMoveConstruct(
                 T* target,
                 ref T source) @system
             {
@@ -230,6 +153,21 @@ version (unittest)
         }
     }
 
+    private struct MoveOnlyOps
+    {
+        mixin PlacementMoveOps!MoveOnly;
+    }
+
+    private struct SystemMoveOps
+    {
+        mixin PlacementMoveOps!SystemMove;
+    }
+
+    private struct SelfReferentialMoveOps
+    {
+        mixin PlacementMoveOps!SelfReferentialMove;
+    }
+
     private struct WithIndirection
     {
         Object reference;
@@ -262,7 +200,7 @@ unittest
         {
             MoveOnly* target = null;
             if (target !is null)
-                ElementLifetimeOps!MoveOnly.placementMoveConstruct(
+                MoveOnlyOps.placementMoveConstruct(
                     target, source);
         }
     }));
@@ -273,7 +211,7 @@ unittest
         {
             SystemMove* target = null;
             if (target !is null)
-                ElementLifetimeOps!SystemMove.placementMoveConstruct(
+                SystemMoveOps.placementMoveConstruct(
                     target, source);
         }
     }));
@@ -293,7 +231,7 @@ unittest
         cast(SelfReferentialMove*) raw.ptr)();
 
     auto placed =
-        ElementLifetimeOps!SelfReferentialMove.placementMoveConstruct(
+        SelfReferentialMoveOps.placementMoveConstruct(
             target, source);
 
     assert(placed is target);
