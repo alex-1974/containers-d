@@ -32,10 +32,31 @@ This repository follows the canonical workspace engineering contract under
 
 ## M3 — Runtime-capacity ring buffer
 
+### M3.1 — Storage and ownership contract
+
+- owning `RingBuffer!T` with runtime capacity;
+- private aligned C-heap backend; no public allocator parameter initially;
+- conditional GC-range registration for indirection-bearing `T`;
+- inert capacity-zero `.init`;
+- automatic copy disabled; O(1) ownership move;
+- no backing-storage allocation during steady-state operations.
+
+Contract: `docs/design/runtime-ring-buffer-storage.md`.
+
+### M3.2 — Owning implementation
+
 - explicit one-time storage acquisition;
-- no hidden allocation during steady-state operations;
-- allocator/lifetime model;
-- move/copy/destruction correctness.
+- checked byte sizing and alignment;
+- element-lifetime / GC-reachability correctness;
+- move/destruction correctness;
+- wrapped segment access;
+- allocation and adversarial evidence.
+
+### M3.3 — Runtime hot-path qualification
+
+- measure runtime wraparound strategies on DMD/LDC;
+- qualify representative push/pop/index/segment paths;
+- retain only evidence-backed runtime specializations.
 
 ## Later candidates
 
