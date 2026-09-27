@@ -248,20 +248,185 @@ Both add large costs on at least one baseline compiler/capacity class.
 
 No compiler-specific production path is admitted by stage A.
 
+## Stage B — whole-operation qualification
+
+Harness:
+
+```text
+benchmarks/runtime_ring_buffer_operation_probe.d
+```
+
+Workflow:
+
+```text
+.github/workflows/perf-runtime-ring-buffer-operations.yml
+```
+
+Authoritative corrected run:
+
+```text
+head: 2c9277f7d5fa79c81405941a89a718220c6a8c44
+workflow run: 36335750788
+runner: ubuntu-24.04
+```
+
+The operation probe measures:
+
+- indexed access on a full wrapped ring;
+- repeated `popFront` + `tryPushBack`;
+- segment access while continuously rotating the ring;
+- a mixed FIFO workload combining pop, push, indexed reads and occasional
+  segment inspection.
+
+Capacities are 63, 64, 1000 and 1024. Each measured workload executes
+1,048,576 deterministic operations.
+
+Three implementations are compared:
+
+```text
+actual
+    the real public RingBuffer!size_t
+
+tailroom
+    a benchmark-local mirror of the relevant RingBuffer implementation,
+    retaining the current physicalIndex algorithm
+
+addcarry
+    the same mirror with only physicalIndex changed to the overflow-safe
+    add/carry candidate
+```
+
+Before measurement, all workloads and capacities require:
+
+```text
+actual checksum == tailroom checksum == addcarry checksum
+```
+
+on both DMD 2.111 and LDC 1.41.
+
+### Calibration result
+
+For every measured capacity and workload on both compilers:
+
+```text
+Ir(actual) == Ir(tailroom)
+```
+
+exactly.
+
+This is important evidence that the benchmark-local mirror preserves the
+relevant optimized hot-path shape of the production RingBuffer closely enough
+for the add/carry comparison.
+
+### DMD 2.111.0
+
+Relative add/carry change versus the actual/tail-room baseline:
+
+| Workload | Measured change |
+|---|---:|
+| indexed access | **+4.37% to +4.64%** |
+| push/pop | **-0.86% to -0.87%** |
+| rotating segment access | **-0.32%** |
+| mixed FIFO | **+0.29% to +0.34%** |
+
+The primitive stage-A add/carry advantage therefore does not survive uniformly
+once the arithmetic is embedded in representative RingBuffer operations.
+
+The only measured whole-operation improvements are below 1%, while indexed
+access and the mixed workload regress.
+
+### LDC 1.41.0
+
+Relative add/carry change versus the actual/tail-room baseline:
+
+| Workload | Measured change |
+|---|---:|
+| indexed access | **+42.27% to +43.78%** |
+| push/pop | **+3.03%** |
+| rotating segment access | **+1.82%** |
+| mixed FIFO | **+6.39% to +6.58%** |
+
+The add/carry candidate is therefore consistently worse than the current
+implementation under LDC.
+
+### Segment-workload correction
+
+An earlier operation run used an invariant segment-only loop. LDC correctly
+collapsed almost all repeated segment work, producing an unusable count of only
+39 retired instructions for the nominal 1,048,576 iterations.
+
+The corrected workload rotates the full ring before each segment query, so
+`head` and the physical segment boundary change continuously. Only the
+corrected run above is evidence for the segment path.
+
+A separate earlier harness defect was also caught by the semantic gate:
+mutating `tryPushBack` calls had initially been placed inside `assert(...)`.
+Because `-release` removes assertion evaluation, that version did not execute
+those pushes. The benchmark was corrected so mutations occur unconditionally
+and only their returned status is asserted. No measurements from that failed
+semantic run are used.
+
+## M3.3 decision
+
+### KEEP
+
+- the current overflow-safe tail-room implementation in `RingBuffer!T`.
+
+It is the only tested shape that remains strong across both baseline compilers
+and representative runtime-capacity workloads without adding state, narrowing
+semantics or creating a compiler-specific maintenance path.
+
+### REJECT for the current RingBuffer implementation
+
+- per-operation power-of-two detection;
+- a shared stored power-of-two classification branch;
+- overflow-safe add/carry as the general implementation;
+- a DMD-specific add/carry implementation.
+
+The DMD-specific candidate is rejected despite its better primitive count:
+whole-operation evidence shows regressions in indexed access and mixed FIFO,
+while its push/pop and segment improvements are below 1%.
+
+### REJECT as a direct replacement under the current contract
+
+- `(head + logicalIndex) % capacity`.
+
+It remains useful code-generation evidence for DMD, but addition-before-modulo
+does not preserve the full representable runtime-capacity contract when the
+addition overflows.
+
+### DEFER
+
+- a dedicated power-of-two-only runtime container or another design in which
+  mask selection is structurally free rather than paid inside every generic
+  operation.
+
+The direct mask itself is strong under LDC, but M3.3 found no selection scheme
+for the existing generic `RingBuffer!T` that improves the power-of-two case
+without materially penalizing the generic non-power-of-two path. No current
+consumer requirement justifies a new specialized public type.
+
+## M3.3 conclusion
+
+M3.3 does **not** admit a runtime wraparound specialization.
+
+The existing production implementation remains unchanged:
+
+```text
+runtime physicalIndex -> overflow-safe tail-room branch/subtract
+```
+
+This is a measured negative optimization decision, not an absence of
+investigation. Stage-A primitive results and Stage-B whole-operation results
+are retained so the same candidates need not be rediscovered without new
+evidence.
+
 ## Next stage
 
-Do not change `RingBuffer!T` yet.
+M3.3 is complete once this evidence branch passes its final Fast CI and is
+integrated.
 
-M3.3 stage B must qualify representative whole-operation paths:
-
-- logical indexed access;
-- push;
-- pop;
-- segment calculation;
-- mixed FIFO workload.
-
-The purpose is to determine whether the primitive arithmetic deltas remain
-material once actual RingBuffer work is included.
-
-Only after stage B should compiler-specific or power-of-two production
-specialization be considered.
+No RingBuffer production-code change is required from the qualification.
+Subsequent planning can therefore move to release preparation or the next
+container family without carrying an unverified runtime wraparound
+optimization.
