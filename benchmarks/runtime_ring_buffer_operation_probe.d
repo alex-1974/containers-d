@@ -236,7 +236,10 @@ private void prepareWrapped(Buffer)(ref Buffer buffer)
     assert(capacity >= 3);
 
     foreach (i; 0 .. capacity)
-        assert(buffer.tryPushBack(i + 1));
+    {
+        const accepted = buffer.tryPushBack(i + 1);
+        assert(accepted);
+    }
 
     const shift = capacity / 3;
 
@@ -244,7 +247,10 @@ private void prepareWrapped(Buffer)(ref Buffer buffer)
         buffer.popFront();
 
     foreach (i; 0 .. shift)
-        assert(buffer.tryPushBack(capacity + i + 1));
+    {
+        const accepted = buffer.tryPushBack(capacity + i + 1);
+        assert(accepted);
+    }
 
     assert(buffer.full);
     assert(buffer.length == capacity);
@@ -280,7 +286,8 @@ private ulong runPushPop(Buffer)(
         foreach (ref const operation; operations)
         {
             buffer.popFront();
-            assert(buffer.tryPushBack(operation.value));
+            const accepted = buffer.tryPushBack(operation.value);
+            assert(accepted);
             checksum += buffer.front;
         }
     }
@@ -327,7 +334,8 @@ private ulong runMixed(Buffer)(
         foreach (ref const operation; operations)
         {
             buffer.popFront();
-            assert(buffer.tryPushBack(operation.value));
+            const accepted = buffer.tryPushBack(operation.value);
+            assert(accepted);
 
             checksum += buffer[operation.logicalIndex];
 
