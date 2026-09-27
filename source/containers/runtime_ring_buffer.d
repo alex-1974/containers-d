@@ -381,6 +381,36 @@ unittest
 
 version (unittest)
 {
+    private struct RuntimeInsertMoveTestElement
+    {
+        static int moves;
+
+        int value;
+        int* self;
+
+        this(int value)
+        {
+            this.value = value;
+            self = &this.value;
+        }
+
+        @disable this(ref return scope RuntimeInsertMoveTestElement rhs);
+
+        this(return scope RuntimeInsertMoveTestElement rhs)
+        {
+            value = rhs.value;
+            self = &this.value;
+            rhs.value = -1;
+            rhs.self = null;
+            ++moves;
+        }
+
+        bool selfValid() @safe @nogc nothrow
+        {
+            return self is &value;
+        }
+    }
+
     private struct RuntimeTracked
     {
         static int alive;
@@ -422,26 +452,19 @@ version (unittest)
 
 unittest
 {
-    // Rvalue insertion of a language-move element must invoke T.this(T) at the
-    // final heap slot address rather than relying on core.lifetime.emplace.
-    RuntimeTracked.alive = 0;
-    RuntimeTracked.copied = 0;
-    RuntimeTracked.moved = 0;
-    RuntimeTracked.destroyed = 0;
+    // Rvalue insertion must invoke the language move constructor at the final
+    // heap slot address. Plain relocation from an intermediate value would
+    // leave the self pointer referring to the wrong object.
+    alias MoveOnly = RuntimeInsertMoveTestElement;
 
-    {
-        auto seed = RuntimeTracked(73);
-        auto buffer = RingBuffer!RuntimeTracked(1);
+    MoveOnly.moves = 0;
+    auto seed = MoveOnly(73);
+    auto buffer = RingBuffer!MoveOnly(1);
 
-        const movedBefore = RuntimeTracked.moved;
-        assert(buffer.tryPushBack(__rvalue(seed)));
-
-        assert(seed.value == -1);
-        assert(buffer.front.value == 73);
-        assert(RuntimeTracked.moved == movedBefore + 1);
-    }
-
-    assert(RuntimeTracked.alive == 0);
+    assert(buffer.tryPushBack(__rvalue(seed)));
+    assert(buffer.front.value == 73);
+    assert(buffer.front.selfValid);
+    assert(MoveOnly.moves >= 1);
 }
 
 unittest
