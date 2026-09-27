@@ -175,6 +175,61 @@ private void probeEmplaceRvalue()
     writeln("emplace-rvalue destructs=", MoveAware.counts.destructs);
 }
 
+private void probePlacementNew()
+{
+    resetMoveAware();
+
+    align(MoveAware.alignof) ubyte[MoveAware.sizeof] storage = void;
+    auto target = rawSlot!MoveAware(storage);
+
+    {
+        auto source = MoveAware(26);
+
+        auto placed = new (*target) MoveAware(__rvalue(source));
+
+        writeln(
+            "placement-new-rvalue",
+            " moves=", MoveAware.counts.moves,
+            " copies=", MoveAware.counts.copies,
+            " source.value=", source.value,
+            " source.armed=", source.armed,
+            " target.value=", placed.value,
+            " target.armed=", placed.armed,
+            " same-address=", placed is target);
+
+        destroy!false(*placed);
+    }
+
+    writeln("placement-new-rvalue destructs=", MoveAware.counts.destructs);
+}
+
+private void probeSelfAwarePlacementNew()
+{
+    resetSelfAware();
+
+    align(SelfAware.alignof) ubyte[SelfAware.sizeof] storage = void;
+    auto target = rawSlot!SelfAware(storage);
+
+    {
+        auto source = SelfAware(46);
+        assert(source.selfValid);
+
+        auto placed = new (*target) SelfAware(__rvalue(source));
+
+        writeln(
+            "self-aware-placement-new",
+            " moves=", SelfAware.counts.moves,
+            " copies=", SelfAware.counts.copies,
+            " source.self-null=", source.self is null,
+            " target.self-valid=", placed.selfValid,
+            " same-address=", placed is target);
+
+        destroy!false(*placed);
+    }
+
+    writeln("self-aware-placement-new destructs=", SelfAware.counts.destructs);
+}
+
 private void probeMoveEmplace()
 {
     resetMoveAware();
@@ -277,7 +332,9 @@ void main()
 
     probeDirectLanguageMove();
     probeEmplaceRvalue();
+    probePlacementNew();
     probeMoveEmplace();
     probeSelfAware();
+    probeSelfAwarePlacementNew();
     probePostMoveAware();
 }
