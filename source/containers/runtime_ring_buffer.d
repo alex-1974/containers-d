@@ -8,7 +8,7 @@ module containers.runtime_ring_buffer;
 
 import containers.internal.runtime_storage : RuntimeStorageOwner;
 import core.lifetime : emplace, forward;
-import std.traits : Unqual;
+import std.traits : hasElaborateDestructor, Unqual;
 
 /**
  * Owning bounded FIFO ring buffer with runtime-selected capacity.
@@ -43,6 +43,14 @@ private:
             return _head + logicalIndex;
 
         return logicalIndex - tailRoom;
+    }
+
+    void endSlotLifetime(size_t physicalIndex)
+    {
+        static if (hasElaborateDestructor!T)
+            destroy!false(*_storage.slotPointer(physicalIndex));
+
+        _storage.clearVacatedSlot(physicalIndex);
     }
 
     void advanceHead() @safe @nogc nothrow
@@ -189,8 +197,7 @@ public:
         assert(!empty);
 
         const physical = _head;
-        destroy!false(*_storage.slotPointer(physical));
-        _storage.clearVacatedSlot(physical);
+        endSlotLifetime(physical);
 
         --_length;
 
@@ -482,4 +489,28 @@ unittest
             moved.clear();
         }();
     }));
+}
+
+unittest
+{
+    // A ring buffer stores a class reference as a value; pop must not invoke
+    // the referenced object's class finalizer.
+    class ReferenceElement
+    {
+        bool finalized;
+
+        ~this()
+        {
+            finalized = true;
+        }
+    }
+
+    auto object = new ReferenceElement;
+    auto buffer = RingBuffer!ReferenceElement(1);
+
+    assert(buffer.tryPushBack(object));
+    buffer.popFront();
+
+    assert(buffer.empty);
+    assert(!object.finalized);
 }

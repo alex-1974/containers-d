@@ -11,7 +11,7 @@
 module containers.ring_buffer;
 
 import core.lifetime : emplace, forward, moveEmplace;
-import std.traits : isCopyable, Unqual;
+import std.traits : hasElaborateDestructor, hasIndirections, isCopyable, Unqual;
 
 version (unittest)
 {
@@ -288,6 +288,26 @@ private:
         }
     }
 
+    void clearVacatedSlot(size_t physicalIndex) nothrow @safe @nogc
+    {
+        static if (hasIndirections!T)
+        {
+            const begin = physicalIndex * T.sizeof;
+            _storage[begin .. begin + T.sizeof] = 0;
+        }
+    }
+
+    void endSlotLifetime(size_t physicalIndex)
+    {
+        static if (hasElaborateDestructor!T)
+            destroy!false(*slotPointer(physicalIndex));
+
+        // Class/interface references and other non-struct indirections are
+        // values stored in the slot; removing them must not finalize the
+        // referenced object. Zeroing only removes the stale GC root.
+        clearVacatedSlot(physicalIndex);
+    }
+
     void advanceHead() nothrow @safe @nogc
     {
         ++_head;
@@ -366,7 +386,7 @@ public:
             else
                 moveEmplace(*source, *target);
 
-            destroy!false(*source);
+            rhs.endSlotLifetime(rhs._head);
 
             ++_length;
             rhs.consumeMovedFront();
@@ -588,7 +608,8 @@ public:
     {
         assert(!empty);
 
-        destroy!false(*slotPointer(_head));
+        const physical = _head;
+        endSlotLifetime(physical);
 
         --_length;
         if (_length == 0)
@@ -1267,4 +1288,28 @@ unittest
             Buffer moved = __rvalue(source);
         }();
     }));
+}
+
+unittest
+{
+    // Removing a stored class reference ends only the reference value's slot
+    // lifetime. It must not explicitly finalize the referenced GC object.
+    class ReferenceElement
+    {
+        bool finalized;
+
+        ~this()
+        {
+            finalized = true;
+        }
+    }
+
+    auto object = new ReferenceElement;
+    StaticRingBuffer!(ReferenceElement, 1) buffer;
+
+    assert(buffer.tryPushBack(object));
+    buffer.popFront();
+
+    assert(buffer.empty);
+    assert(!object.finalized);
 }
