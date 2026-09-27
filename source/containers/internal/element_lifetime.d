@@ -127,7 +127,7 @@ version (unittest)
         int value;
         int* self;
 
-        this(int value) @safe @nogc nothrow
+        this(int value) @system @nogc nothrow
         {
             this.value = value;
             self = &this.value;
@@ -135,7 +135,7 @@ version (unittest)
 
         @disable this(ref return scope SelfReferentialMove rhs);
 
-        this(return scope SelfReferentialMove rhs) @safe @nogc nothrow
+        this(return scope SelfReferentialMove rhs) @system @nogc nothrow
         {
             value = rhs.value;
             self = &this.value;
