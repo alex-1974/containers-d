@@ -83,6 +83,46 @@ private ulong runTailRoom(
     return checksum;
 }
 
+private size_t addCarryIndex(ref const IndexPair pair)
+    nothrow @safe @nogc
+{
+    size_t index = pair.head + pair.offset;
+
+    // Unsigned carry is detected by index < head. In either the carry case or
+    // the ordinary wrapped-ring case, one subtraction is enough because head
+    // and offset are each strictly below capacity.
+    if (index < pair.head || index >= pair.capacity)
+        index -= pair.capacity;
+
+    return index;
+}
+
+private void verifyAddCarryExtremes() nothrow @safe @nogc
+{
+    IndexPair pair;
+
+    // Ordinary non-wrapped case.
+    pair.capacity = 1000;
+    pair.head = 900;
+    pair.offset = 50;
+    assert(addCarryIndex(pair) == 950);
+
+    // Ordinary ring wrap without machine-integer overflow.
+    pair.offset = 200;
+    assert(addCarryIndex(pair) == 100);
+
+    // Ring wrap where head + offset itself wraps size_t.
+    pair.capacity = size_t.max;
+    pair.head = size_t.max - 2;
+    pair.offset = size_t.max - 3;
+    assert(addCarryIndex(pair) == size_t.max - 5);
+
+    // Exact capacity boundary at the largest representable capacity.
+    pair.head = size_t.max - 1;
+    pair.offset = 1;
+    assert(addCarryIndex(pair) == 0);
+}
+
 private ulong runAddCarry(
     scope const IndexPair[] pairs,
     size_t rounds) nothrow @safe @nogc
@@ -92,17 +132,7 @@ private ulong runAddCarry(
     foreach (_; 0 .. rounds)
     {
         foreach (ref const pair; pairs)
-        {
-            size_t index = pair.head + pair.offset;
-
-            // Unsigned carry is detected by index < head. In either the carry
-            // case or the ordinary wrapped-ring case, one subtraction is enough
-            // because head and offset are each strictly below capacity.
-            if (index < pair.head || index >= pair.capacity)
-                index -= pair.capacity;
-
-            checksum += index;
-        }
+            checksum += addCarryIndex(pair);
     }
 
     return checksum;
@@ -287,6 +317,8 @@ void main(string[] args)
         stderr.writeln("mask variant requires a power-of-two capacity");
         return;
     }
+
+    verifyAddCarryExtremes();
 
     IndexPair[pairCount] pairs = void;
     fillPairs(pairs, capacity);
