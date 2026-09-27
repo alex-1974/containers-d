@@ -126,6 +126,20 @@ public:
      */
     this(size_t capacity) @safe @nogc nothrow
     {
+        initialize(capacity);
+    }
+
+    /**
+     * Initializes an inert owner with storage for capacity T slots.
+     *
+     * Package-internal so the enclosing runtime container can construct its
+     * owner field in place without enabling general assignment.
+     */
+    package(containers) void initialize(
+        size_t capacity) scope @safe @nogc nothrow
+    {
+        assert(emptyStorage);
+
         if (capacity == 0)
             return;
 
@@ -140,6 +154,26 @@ public:
         _bytes = block;
         _capacity = capacity;
         registerRangeIfNeeded();
+    }
+
+    /**
+     * Transfers unique ownership from another owner into this inert owner.
+     *
+     * The slice descriptor always denotes storage acquired by Backend rather
+     * than memory embedded in rhs. DIP1000 cannot derive that provenance from
+     * the dynamic-array type alone, so this narrow ownership transfer is the
+     * audited trust boundary.
+     */
+    package(containers) void takeOwnershipFrom(
+        ref RuntimeStorageOwner rhs) @trusted @nogc nothrow
+    {
+        assert(emptyStorage);
+
+        _bytes = rhs._bytes;
+        _capacity = rhs._capacity;
+
+        rhs._bytes = null;
+        rhs._capacity = 0;
     }
 
     /// Owning storage is never copied implicitly.
@@ -159,6 +193,24 @@ public:
 
         rhs._bytes = null;
         rhs._capacity = 0;
+    }
+
+    package(containers) T* slotPointer(
+        size_t physicalIndex) return scope @safe @nogc nothrow
+    {
+        assert(physicalIndex < _capacity);
+
+        return (() @trusted =>
+            cast(T*) (_bytes.ptr + physicalIndex * T.sizeof))();
+    }
+
+    package(containers) const(T)* slotPointer(
+        size_t physicalIndex) const return scope @safe @nogc nothrow
+    {
+        assert(physicalIndex < _capacity);
+
+        return (() @trusted =>
+            cast(const(T)*) (_bytes.ptr + physicalIndex * T.sizeof))();
     }
 
     /// Identity assignment is deliberately unavailable in the first owner.
