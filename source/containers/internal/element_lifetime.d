@@ -7,7 +7,6 @@
  */
 module containers.internal.element_lifetime;
 
-import core.lifetime : destroy;
 import std.traits : hasElaborateDestructor, hasIndirections;
 
 /**
