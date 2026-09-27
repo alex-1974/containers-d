@@ -925,7 +925,7 @@ unittest
 {
     // Non-trivial element lifetime: only live slots own objects, removal
     // destroys exactly one buffer-owned element, and clear destroys the rest.
-    struct Tracked
+    static struct Tracked
     {
         static int alive;
         static int copied;
@@ -1189,7 +1189,7 @@ unittest
     // For an element without a language move constructor, baseline
     // moveEmplace relocation must transfer resource ownership without releasing
     // the resource from the wiped source slot.
-    struct RelocatableOwner
+    static struct RelocatableOwner
     {
         static int releases;
 
