@@ -155,8 +155,8 @@ version (unittest)
 /// Identity assignment is currently disabled.
 ///
 /// Params:
-///   T = element type; nested/local struct types with a hidden outer context
-///       are not supported in the v0.1 API
+///   T = element type; nested/local struct types carrying hidden outer
+///       context/indirections are not supported in the v0.1 API
 ///   Capacity = maximum number of live elements; must be greater than zero
 ///
 /// Init:
@@ -183,8 +183,8 @@ struct StaticRingBuffer(T, size_t Capacity)
         "StaticRingBuffer capacity must be greater than zero");
     static assert(T.sizeof > 0,
         "StaticRingBuffer requires an element type with non-zero size");
-    static assert(!(is(T == struct) && isNested!T),
-        "StaticRingBuffer v0.1 does not support nested/local struct element types");
+    static assert(!(is(T == struct) && isNested!T && hasIndirections!T),
+        "StaticRingBuffer v0.1 does not support nested/local struct element types with hidden context/indirections");
 
     /// Compile-time maximum number of live elements.
     enum size_t capacity = Capacity;
