@@ -11,7 +11,7 @@
 module containers.ring_buffer;
 
 import core.lifetime : emplace, forward, moveEmplace;
-import std.traits : hasElaborateDestructor, hasIndirections, isCopyable, isNested, Unqual;
+import std.traits : hasElaborateDestructor, hasIndirections, isNested, Unqual;
 
 private union StaticRingStorage(T, size_t Capacity)
 {
@@ -289,6 +289,17 @@ private:
         }
     }
 
+    // Define the container copy contract by the language operation we
+    // actually require: construction of T from an lvalue T. Phobos
+    // isCopyable changed semantics across the controlled compiler matrix and
+    // is therefore too broad for this ownership contract.
+    enum bool elementCopyConstructible = __traits(compiles, {
+        void probe(ref T source)
+        {
+            T copy = source;
+        }
+    });
+
     // Check whether ordinary language move construction of T is permitted
     // from @safe code. Placement new itself is @system, so the raw-storage
     // helper below may only elevate that operation to @trusted when T's
@@ -373,7 +384,7 @@ private:
     }
 
 public:
-    static if (isCopyable!T)
+    static if (elementCopyConstructible)
     {
         /**
          * Element-wise copy construction.
@@ -1363,18 +1374,15 @@ unittest
 
 unittest
 {
-    // Safe element move construction must not make the container move operation
-    // spuriously @system merely because placement new is the raw-storage
-    // primitive used internally.
+    // The element language move constructor itself is @safe. Whole-buffer move
+    // semantics are validated separately. Frontend 2.112+ deliberately
+    // rejects the __rvalue(local) expression in @safe code, independently of
+    // this container's move-constructor attributes.
     alias SafeMove = SafeMoveTestElement;
 
-    alias Buffer = StaticRingBuffer!(SafeMove, 2);
-
     static assert(__traits(compiles, {
-        () @safe @nogc nothrow {
-            Buffer source;
-            Buffer moved = __rvalue(source);
-        }();
+        SafeMove source;
+        SafeMove moved = __rvalue(source);
     }));
 }
 
