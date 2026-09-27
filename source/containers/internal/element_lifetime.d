@@ -73,6 +73,7 @@ package(containers) struct ElementLifetimeOps(T)
              * construction has independently been shown callable from @safe
              * code, so only placement-new's raw-storage transition is trusted.
              */
+            pragma(inline, true)
             static T* placementMoveConstruct(
                 T* target,
                 ref T source) @trusted
@@ -91,6 +92,7 @@ package(containers) struct ElementLifetimeOps(T)
              * upgrade an unsafe element operation merely because the target
              * slot itself is valid.
              */
+            pragma(inline, true)
             static T* placementMoveConstruct(
                 T* target,
                 ref T source) @system
