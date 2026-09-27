@@ -30,6 +30,22 @@ The buffer itself performs no heap allocation for construction or steady-state
 push/pop operations. Operations performed by the element type `T` may still
 allocate.
 
+For zero-copy bulk access, the current logical FIFO sequence is available as at
+most two borrowed contiguous slices:
+
+```d
+auto first = queue.firstSegment;
+auto second = queue.secondSegment;
+
+// Logical order is exactly:
+// first followed by second.
+assert(first.length + second.length == queue.length);
+```
+
+The slices borrow the buffer's inline storage. Successful structural mutation
+invalidates previously returned segment slices; a failed `tryPushBack` on a
+full buffer does not.
+
 Whole-buffer copy construction is available when `T` is copyable. Whole-buffer
 move construction currently excludes element types that define a D language
 move constructor; that toolchain/lifetime boundary is tracked in issue #3.

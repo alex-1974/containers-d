@@ -64,6 +64,14 @@ jobs:
         shell: bash
         run: DFLAGS="-preview=dip1000" dub run --root=tests/consumer --compiler="$DC" --force
 
+      - name: DIP1000 borrowed-slice negative compile
+        shell: bash
+        run: |
+          if DFLAGS="-preview=dip1000" dub build               --root=tests/compile-negative/segment-escape               --compiler="$DC"               --force; then
+            echo "Expected borrowed segment escape to fail under DIP1000."
+            false
+          fi
+
       - name: Documentation build
         if: startsWith(matrix.compiler, 'dmd-')
         shell: bash

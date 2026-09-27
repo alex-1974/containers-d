@@ -14,8 +14,18 @@ void main() @safe @nogc nothrow
     assert(buffer.back == 20);
     assert(buffer[1] == 20);
 
+    auto first = buffer.firstSegment;
+    auto second = buffer.secondSegment;
+    assert(first.length + second.length == buffer.length);
+    assert(first[0] == 10);
+    assert(first[1] == 20);
+    assert(second.length == 0);
+
+    first[1] = 21;
+    assert(buffer.back == 21);
+
     buffer.popFront();
-    assert(buffer.front == 20);
+    assert(buffer.front == 21);
 
     buffer.clear();
     assert(buffer.empty);
