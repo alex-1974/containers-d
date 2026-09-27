@@ -59,7 +59,7 @@ private struct MixedInMoveOps
  */
 private MoveValue* directPlacementMove(
     MoveValue* target,
-    ref MoveValue source) @trusted @nogc nothrow
+    ref MoveValue source) @trusted
 {
     assert(target !is null);
     return new (*target) MoveValue(__rvalue(source));
@@ -72,7 +72,7 @@ private MoveValue* rawTarget(
 }
 
 pragma(inline, false)
-extern(C) ulong bench_direct(size_t rounds) @safe @nogc nothrow
+extern(C) ulong bench_direct(size_t rounds) @safe
 {
     align(MoveValue.alignof) ubyte[MoveValue.sizeof] raw = void;
     auto target = rawTarget(raw);
@@ -92,7 +92,7 @@ extern(C) ulong bench_direct(size_t rounds) @safe @nogc nothrow
 }
 
 pragma(inline, false)
-extern(C) ulong bench_shared(size_t rounds) @safe @nogc nothrow
+extern(C) ulong bench_shared(size_t rounds) @safe
 {
     align(MoveValue.alignof) ubyte[MoveValue.sizeof] raw = void;
     auto target = rawTarget(raw);
