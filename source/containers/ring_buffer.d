@@ -13,6 +13,114 @@ module containers.ring_buffer;
 import core.lifetime : emplace, forward, moveEmplace;
 import std.traits : isCopyable, Unqual;
 
+version (unittest)
+{
+    private struct MoveOnlyTestElement
+    {
+        int value;
+
+        this(int value)
+        {
+            this.value = value;
+        }
+
+        @disable this(ref return scope MoveOnlyTestElement rhs);
+
+        this(return scope MoveOnlyTestElement rhs)
+        {
+            value = rhs.value;
+            rhs.value = -1;
+        }
+    }
+
+    private struct TrackedTransferTestElement
+    {
+        static int alive;
+        static int copied;
+        static int moved;
+        static int destroyed;
+
+        int value;
+
+        this(int value)
+        {
+            this.value = value;
+            ++alive;
+        }
+
+        this(ref return scope TrackedTransferTestElement rhs)
+        {
+            value = rhs.value;
+            ++alive;
+            ++copied;
+        }
+
+        this(return scope TrackedTransferTestElement rhs)
+        {
+            value = rhs.value;
+            rhs.value = -1;
+            ++alive;
+            ++moved;
+        }
+
+        ~this()
+        {
+            --alive;
+            ++destroyed;
+        }
+    }
+
+    private struct SelfReferentialTestElement
+    {
+        static int moves;
+
+        int value;
+        int* self;
+
+        this(int value)
+        {
+            this.value = value;
+            self = &this.value;
+        }
+
+        this(ref return scope SelfReferentialTestElement rhs)
+        {
+            value = rhs.value;
+            self = &this.value;
+        }
+
+        this(return scope SelfReferentialTestElement rhs) @safe nothrow @nogc
+        {
+            value = rhs.value;
+            self = &this.value;
+            rhs.value = -1;
+            rhs.self = null;
+            ++moves;
+        }
+
+        bool selfValid() @safe nothrow @nogc
+        {
+            return self is &value;
+        }
+    }
+
+    private struct SafeMoveTestElement
+    {
+        int value;
+
+        this(ref return scope SafeMoveTestElement rhs) @safe nothrow @nogc
+        {
+            value = rhs.value;
+        }
+
+        this(return scope SafeMoveTestElement rhs) @safe nothrow @nogc
+        {
+            value = rhs.value;
+            rhs.value = -1;
+        }
+    }
+}
+
 ///
 /// Stores up to `Capacity` FIFO elements in inline storage.
 ///
@@ -796,24 +904,7 @@ unittest
 {
     // A move-only element keeps the buffer move-constructible without making
     // the buffer copy-constructible.
-    struct MoveOnly
-    {
-        int value;
-
-        this(int value)
-        {
-            this.value = value;
-        }
-
-        @disable this(ref return scope MoveOnly rhs);
-
-        this(return scope MoveOnly rhs)
-        {
-            value = rhs.value;
-            rhs.value = -1;
-        }
-    }
-
+    alias MoveOnly = MoveOnlyTestElement;
     alias Buffer = StaticRingBuffer!(MoveOnly, 2);
 
     static assert(!__traits(compiles, {
@@ -828,48 +919,12 @@ unittest
         Buffer moved = __rvalue(source);
     }));
 }
-
 unittest
 {
     // Whole-buffer copy and move construction must preserve non-trivial element
     // lifetime accounting. A move transfers one live lifetime; it does not
     // create an additional live element.
-    struct TrackedTransfer
-    {
-        static int alive;
-        static int copied;
-        static int moved;
-        static int destroyed;
-
-        int value;
-
-        this(int value)
-        {
-            this.value = value;
-            ++alive;
-        }
-
-        this(ref return scope TrackedTransfer rhs)
-        {
-            value = rhs.value;
-            ++alive;
-            ++copied;
-        }
-
-        this(return scope TrackedTransfer rhs)
-        {
-            value = rhs.value;
-            rhs.value = -1;
-            ++alive;
-            ++moved;
-        }
-
-        ~this()
-        {
-            --alive;
-            ++destroyed;
-        }
-    }
+    alias TrackedTransfer = TrackedTransferTestElement;
 
     TrackedTransfer.alive = 0;
     TrackedTransfer.copied = 0;
@@ -1172,39 +1227,7 @@ unittest
 {
     // A language move constructor must run at the final inline-storage address.
     // Bit relocation would leave self pointing into the source buffer.
-    struct SelfReferential
-    {
-        static int moves;
-
-        int value;
-        int* self;
-
-        this(int value)
-        {
-            this.value = value;
-            self = &this.value;
-        }
-
-        this(ref return scope SelfReferential rhs)
-        {
-            value = rhs.value;
-            self = &this.value;
-        }
-
-        this(return scope SelfReferential rhs) @safe nothrow @nogc
-        {
-            value = rhs.value;
-            self = &this.value;
-            rhs.value = -1;
-            rhs.self = null;
-            ++moves;
-        }
-
-        bool selfValid() @safe nothrow @nogc
-        {
-            return self is &value;
-        }
-    }
+    alias SelfReferential = SelfReferentialTestElement;
 
     static assert(__traits(hasMoveConstructor, SelfReferential));
 
@@ -1234,21 +1257,7 @@ unittest
     // Safe element move construction must not make the container move operation
     // spuriously @system merely because placement new is the raw-storage
     // primitive used internally.
-    struct SafeMove
-    {
-        int value;
-
-        this(ref return scope SafeMove rhs) @safe nothrow @nogc
-        {
-            value = rhs.value;
-        }
-
-        this(return scope SafeMove rhs) @safe nothrow @nogc
-        {
-            value = rhs.value;
-            rhs.value = -1;
-        }
-    }
+    alias SafeMove = SafeMoveTestElement;
 
     alias Buffer = StaticRingBuffer!(SafeMove, 2);
 
