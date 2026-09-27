@@ -30,13 +30,13 @@ private bool checkedStorageBytes(T)(
     return true;
 }
 
-private void addGcRange(ubyte[] bytes) @trusted @nogc nothrow
+private void addGcRange(scope ubyte[] bytes) @trusted @nogc nothrow
 {
     assert(bytes.length != 0);
     GC.addRange(bytes.ptr, bytes.length);
 }
 
-private void removeGcRange(ubyte[] bytes) @trusted @nogc nothrow
+private void removeGcRange(scope ubyte[] bytes) @trusted @nogc nothrow
 {
     assert(bytes.length != 0);
     GC.removeRange(bytes.ptr);
@@ -55,7 +55,7 @@ private struct AlignedStorageBackend
         return cast(ubyte[]) block;
     }
 
-    static void release(ubyte[] block) @trusted @nogc nothrow
+    static void release(scope ubyte[] block) @trusted @nogc nothrow
     {
         if (block.ptr is null)
             return;
@@ -79,7 +79,7 @@ private:
     ubyte[] _bytes;
     size_t _capacity;
 
-    void registerRangeIfNeeded() @safe @nogc nothrow
+    void registerRangeIfNeeded() scope @safe @nogc nothrow
     {
         static if (hasIndirections!T)
         {
@@ -93,7 +93,7 @@ private:
         }
     }
 
-    void unregisterRangeIfNeeded() @safe @nogc nothrow
+    void unregisterRangeIfNeeded() scope @safe @nogc nothrow
     {
         static if (hasIndirections!T)
         {
@@ -102,7 +102,7 @@ private:
         }
     }
 
-    void releaseStorage() @safe @nogc nothrow
+    void releaseStorage() scope @safe @nogc nothrow
     {
         if (_bytes.ptr is null)
             return;
@@ -164,7 +164,7 @@ public:
     /// Identity assignment is deliberately unavailable in the first owner.
     @disable ref typeof(this) opAssign(ref typeof(this) rhs);
 
-    ~this() @safe @nogc nothrow
+    ~this() scope @safe @nogc nothrow
     {
         releaseStorage();
     }
@@ -220,7 +220,7 @@ version (unittest)
             return AlignedStorageBackend.acquire(bytes, alignment);
         }
 
-        static void release(ubyte[] block) @safe @nogc nothrow
+        static void release(scope ubyte[] block) @safe @nogc nothrow
         {
             ++releases;
             AlignedStorageBackend.release(block);
