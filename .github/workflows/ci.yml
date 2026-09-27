@@ -64,6 +64,10 @@ jobs:
         shell: bash
         run: DFLAGS="-preview=dip1000" dub run --root=tests/consumer --compiler="$DC" --force
 
+      - name: Runtime GC reachability
+        shell: bash
+        run: dub run --root=tests/gc-reachability --compiler="$DC" --force
+
       - name: DIP1000 borrowed-slice negative compile
         shell: bash
         run: |
