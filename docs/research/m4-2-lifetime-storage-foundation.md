@@ -101,7 +101,10 @@ time and compared against the existing behavior.
 2. Raw-slot structural concept.
 3. Positive/negative attribute probes on DMD 2.111 and LDC 1.41.
 4. Add an internal construction-at-unused-slot helper for the exact insertion
-   semantics already used by both ring types.
+   semantics already used by both ring types. **Implemented in research:** the
+   helper preserves @safe versus @system according to T's language move
+   constructor, and a self-referential probe verifies construction at the final
+   slot address.
 5. Add explicit end-live-slot helper only if destructor/GC clearing ownership
    can remain storage-agnostic.
 6. Build a research-only StaticVector on the shared layer.
