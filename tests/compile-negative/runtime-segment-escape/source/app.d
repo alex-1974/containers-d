@@ -1,6 +1,6 @@
 module app;
 
-import containers.runtime_ring_buffer : RingBuffer;
+import containers : RingBuffer;
 
 int[] escapeRuntimeSegment() @safe
 {
