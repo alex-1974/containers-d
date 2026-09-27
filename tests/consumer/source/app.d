@@ -1,6 +1,6 @@
 module app;
 
-import containers : StaticRingBuffer;
+import containers : RingBuffer, StaticRingBuffer;
 
 struct SafeMovable
 {
@@ -55,4 +55,26 @@ void main() @safe @nogc nothrow
     auto moved = __rvalue(movable);
     assert(moved.length == 1);
     assert(moved.front.value == 77);
+
+    auto runtime = RingBuffer!int(4);
+    assert(runtime.capacity == 4);
+    assert(runtime.tryPushBack(100));
+    assert(runtime.tryPushBack(200));
+    assert(runtime.tryPushBack(300));
+
+    runtime.popFront();
+    assert(runtime.tryPushBack(400));
+    assert(runtime.tryPushBack(500));
+
+    auto runtimeFirst = runtime.firstSegment;
+    auto runtimeSecond = runtime.secondSegment;
+    assert(runtimeFirst.length + runtimeSecond.length == runtime.length);
+    assert(runtime[0] == 200);
+    assert(runtime.back == 500);
+
+    auto runtimeMoved = __rvalue(runtime);
+    assert(runtime.capacity == 0);
+    assert(runtimeMoved.capacity == 4);
+    assert(runtimeMoved.length == 4);
+    runtimeMoved.clear();
 }
