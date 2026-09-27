@@ -539,10 +539,17 @@ unittest
     assert(buffer[3] == 40);
 
     // Full insertion is non-overwriting and leaves the sequence unchanged.
+    // Because no structural mutation occurs, existing segment views remain
+    // valid across the failed operation.
+    auto fullFirst = buffer.firstSegment;
+    auto fullSecond = buffer.secondSegment;
+
     assert(!buffer.tryPushBack(50));
     assert(buffer.length == 4);
     assert(buffer.front == 10);
     assert(buffer.back == 40);
+    assert(fullFirst == [10, 20, 30, 40]);
+    assert(fullSecond.length == 0);
 
     buffer.popFront();
     buffer.popFront();
@@ -962,6 +969,18 @@ unittest
 
         foreach (i; 0 .. modelLength)
             assert(buffer[i] == model[i]);
+
+        const first = buffer.firstSegment;
+        const second = buffer.secondSegment;
+
+        assert(first.length + second.length == modelLength);
+
+        size_t segmentIndex;
+        foreach (value; first)
+            assert(value == model[segmentIndex++]);
+        foreach (value; second)
+            assert(value == model[segmentIndex++]);
+        assert(segmentIndex == modelLength);
 
         if (modelLength != 0)
         {

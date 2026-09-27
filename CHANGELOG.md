@@ -10,3 +10,5 @@
   compiler-tested wraparound specialization.
 - Reproducible Callgrind evidence for power-of-two and non-power-of-two
   wraparound arithmetic.
+- Borrowed contiguous segment access through `firstSegment` and
+  `secondSegment`, including DIP1000 lifetime validation.

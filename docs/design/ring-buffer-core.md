@@ -203,8 +203,13 @@ Invalidation contract:
 This deliberately conservative rule leaves room for a stronger future
 invalidation guarantee without making the initial contract unsafe.
 
-DIP1000 may strengthen compile-time lifetime checking for consumers, but the
-package must not force preview language switches through `dub.sdl`.
+The segment accessors use D's `scope return` member-function semantics because
+their slices point into storage embedded directly in the struct. Under DIP1000,
+returning such a slice from a shorter-lived local buffer is rejected at compile
+time. This is covered by a dedicated negative compile test.
+
+The package does not force preview language switches through `dub.sdl`; DIP1000
+is exercised explicitly in CI.
 
 ## 9. Wrapped segment access
 
