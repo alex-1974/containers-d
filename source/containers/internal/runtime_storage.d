@@ -442,16 +442,22 @@ unittest
         assert(value == 0);
 }
 
+version (unittest)
+{
+    private void runtimeStorageLifecycleAttributeProbe() @safe @nogc nothrow
+    {
+        auto source = RuntimeStorageOwner!int(8);
+        auto moved = __rvalue(source);
+
+        assert(source.emptyStorage);
+        assert(moved.capacity == 8);
+    }
+}
+
 unittest
 {
-    // The owner lifecycle itself is usable from @safe @nogc nothrow code.
-    static assert(__traits(compiles, {
-        () @safe @nogc nothrow {
-            auto source = RuntimeStorageOwner!int(8);
-            auto moved = __rvalue(source);
-
-            assert(source.emptyStorage);
-            assert(moved.capacity == 8);
-        }();
-    }));
+    // Keep this as a direct compile probe so toolchain-specific attribute or
+    // move-safety failures report their actual cause instead of being hidden
+    // behind __traits(compiles).
+    runtimeStorageLifecycleAttributeProbe();
 }
