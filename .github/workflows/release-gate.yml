@@ -209,7 +209,6 @@ jobs:
         uses: dlang-community/setup-dlang@v2
         with:
           compiler: ldc-latest
-          dub: 1.40.0
 
       - name: Platform and compiler information
         shell: bash
