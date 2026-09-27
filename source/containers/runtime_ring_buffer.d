@@ -7,7 +7,7 @@ module containers.runtime_ring_buffer;
 
 import containers.internal.runtime_storage : RuntimeStorageOwner;
 import core.lifetime : emplace, forward;
-import std.traits : hasElaborateDestructor, Unqual;
+import std.traits : hasElaborateDestructor, isNested, Unqual;
 
 /**
  * Owning bounded FIFO ring buffer with runtime-selected capacity.
@@ -23,6 +23,8 @@ struct RingBuffer(T)
 {
     static assert(T.sizeof > 0,
         "RingBuffer requires an element type with non-zero size");
+    static assert(!(is(T == struct) && isNested!T),
+        "RingBuffer v0.1 does not support nested/local struct element types");
 
 private:
     RuntimeStorageOwner!T _storage;
@@ -57,6 +59,37 @@ private:
         size_t count) const scope return @trusted @nogc nothrow
     {
         return _storage.slotSlice(physicalStart, count);
+    }
+
+    enum bool safeLanguageMove = __traits(compiles, {
+        void probe(ref T source) @safe
+        {
+            T target = __rvalue(source);
+        }
+    });
+
+    static if (__traits(hasMoveConstructor, T))
+    {
+        static if (safeLanguageMove)
+        {
+            T* placementMoveConstruct(
+                T* target,
+                ref T source) @trusted
+            {
+                // target is aligned unused storage owned by this RingBuffer,
+                // and T's language move construction is independently @safe.
+                return new (*target) T(__rvalue(source));
+            }
+        }
+        else
+        {
+            T* placementMoveConstruct(
+                T* target,
+                ref T source) @system
+            {
+                return new (*target) T(__rvalue(source));
+            }
+        }
     }
 
     size_t physicalIndex(size_t logicalIndex) const @safe @nogc nothrow
@@ -156,7 +189,11 @@ public:
         return _length == capacity;
     }
 
-    /// Mutable logical front element.
+    /**
+     * Mutable logical front element.
+     *
+     * Precondition: the buffer is not empty.
+     */
     ref T front() scope return
     {
         assert(!empty);
@@ -170,7 +207,11 @@ public:
         return *_storage.slotPointer(_head);
     }
 
-    /// Mutable logical back element.
+    /**
+     * Mutable logical back element.
+     *
+     * Precondition: the buffer is not empty.
+     */
     ref T back() scope return
     {
         assert(!empty);
@@ -184,7 +225,11 @@ public:
         return *_storage.slotPointer(physicalIndex(_length - 1));
     }
 
-    /// Mutable logical indexed access independent of physical wraparound.
+    /**
+     * Mutable logical indexed access independent of physical wraparound.
+     *
+     * Precondition: logicalIndex is less than length.
+     */
     ref T opIndex(size_t logicalIndex) scope return
     {
         assert(logicalIndex < _length);
@@ -262,6 +307,12 @@ public:
      *
      * Returns false when full. A failed insertion leaves the logical sequence
      * unchanged.
+     *
+     * Lvalues use the ordinary `core.lifetime.emplace` construction path.
+     * For an exact T rvalue whose type defines a D language move constructor,
+     * the move constructor is invoked directly at the final storage address;
+     * insertion therefore does not depend on the unresolved rvalue behavior of
+     * `core.lifetime.emplace` tracked in issue #8.
      */
     bool tryPushBack(U)(auto ref U value)
     if (is(Unqual!U == T) &&
@@ -271,7 +322,18 @@ public:
             return false;
 
         const physical = physicalIndex(_length);
-        emplace(_storage.slotPointer(physical), forward!value);
+
+        static if (__traits(hasMoveConstructor, T) &&
+            is(U == T) &&
+            !__traits(isRef, value))
+        {
+            placementMoveConstruct(_storage.slotPointer(physical), value);
+        }
+        else
+        {
+            emplace(_storage.slotPointer(physical), forward!value);
+        }
+
         ++_length;
         return true;
     }
@@ -355,6 +417,49 @@ version (unittest)
             ++destroyed;
         }
     }
+}
+
+
+unittest
+{
+    // Rvalue insertion of a language-move element must invoke T.this(T) at the
+    // final heap slot address rather than relying on core.lifetime.emplace.
+    RuntimeTracked.alive = 0;
+    RuntimeTracked.copied = 0;
+    RuntimeTracked.moved = 0;
+    RuntimeTracked.destroyed = 0;
+
+    {
+        auto seed = RuntimeTracked(73);
+        auto buffer = RingBuffer!RuntimeTracked(1);
+
+        const movedBefore = RuntimeTracked.moved;
+        assert(buffer.tryPushBack(__rvalue(seed)));
+
+        assert(seed.value == -1);
+        assert(buffer.front.value == 73);
+        assert(RuntimeTracked.moved == movedBefore + 1);
+    }
+
+    assert(RuntimeTracked.alive == 0);
+}
+
+unittest
+{
+    // v0.1 deliberately rejects nested/local struct element types. Their
+    // hidden context/frame lifetime is not part of the admitted contract.
+    int outer;
+
+    struct NestedElement
+    {
+        int opCall()
+        {
+            return ++outer;
+        }
+    }
+
+    static assert(isNested!NestedElement);
+    static assert(!__traits(compiles, RingBuffer!NestedElement(1)));
 }
 
 unittest
