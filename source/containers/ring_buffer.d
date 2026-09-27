@@ -13,6 +13,14 @@ module containers.ring_buffer;
 import core.lifetime : emplace, forward, moveEmplace;
 import std.traits : hasElaborateDestructor, hasIndirections, isCopyable, Unqual;
 
+private union StaticRingStorage(T, size_t Capacity)
+{
+    static if (hasIndirections!T)
+        T[Capacity] gcShape;
+
+    align(T.alignof) ubyte[T.sizeof * Capacity] bytes;
+}
+
 version (unittest)
 {
     private struct MoveOnlyTestElement
@@ -167,29 +175,22 @@ struct StaticRingBuffer(T, size_t Capacity)
 private:
     // The raw bytes are the only storage member used by container logic.
     //
-    // For indirection-bearing T, an overlapping T[Capacity] member exists only
-    // so D's compiler-generated GC pointer bitmap describes the true potential
-    // pointer offsets inside the raw storage. The union suppresses automatic
-    // payload destruction; live T lifetimes remain managed explicitly.
-    union InlineStorage
-    {
-        static if (hasIndirections!T)
-            T[Capacity] gcShape;
-
-        align(T.alignof) ubyte[T.sizeof * Capacity] bytes;
-    }
+    // For indirection-bearing T, StaticRingStorage overlays T[Capacity] only so
+    // D's compiler-generated GC pointer bitmap describes the true potential
+    // pointer offsets. The union itself owns no T lifetime.
+    alias Storage = StaticRingStorage!(T, Capacity);
 
     static if (hasIndirections!T)
     {
         // Pointer-bearing raw storage must start from a GC-safe .init bitmap
         // rather than arbitrary bytes that could look like stale roots.
-        InlineStorage _storage = InlineStorage.init;
+        Storage _storage = Storage.init;
     }
     else
     {
         // Pointer-free elements keep the original uninitialized-storage fast
         // path: no byte is read before a T lifetime is explicitly begun.
-        InlineStorage _storage = void;
+        Storage _storage = void;
     }
 
     size_t _head;
