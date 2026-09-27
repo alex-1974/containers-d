@@ -322,9 +322,9 @@ representation rather than copied mechanically from inline-storage
 Thread-safe SPSC/MPSC/MPMC structures remain separate types with separate
 memory-order contracts.
 
-## 15. First-wave executable gates
+## 15. Public-admission executable gates — satisfied
 
-Before `RingBuffer!T` is exported from the package root, validate:
+Before `RingBuffer!T` was exported from the package root, the following were required:
 
 - `.init` inert owner semantics;
 - capacity zero;
@@ -350,9 +350,9 @@ Before `RingBuffer!T` is exported from the package root, validate:
 
 ## 16. Deferred questions
 
-Nested/local element types with hidden context pointers remain governed by the
-separate research tracked in issue #10. M3 does not silently expand that
-element-support category.
+Nested/local struct element types with hidden context pointers are explicitly
+rejected by the v0.1 public buffers. Issue #10 retains the research question for
+possible future admission; v0.1 does not expose a partially validated mode.
 
 Not part of the first runtime-capacity public type:
 

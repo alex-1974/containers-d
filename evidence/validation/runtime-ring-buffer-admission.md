@@ -115,8 +115,12 @@ Results:
 - Ddoc build: PASS
 - release build: PASS
 
-## Deferred
+## Post-admission qualification
 
-M3.3 remains responsible for runtime hot-path performance qualification.
-The semantic/public M3.2 admission does not assume that compile-time wraparound
-micro-optimizations transfer automatically to runtime capacity.
+M3.3 subsequently completed runtime hot-path performance qualification in
+issue #19 / PR #20.
+
+Whole-operation evidence retained the existing overflow-safe tail-room
+implementation and rejected the measured runtime specialization candidates for
+the generic `RingBuffer!T` contract. See
+`evidence/performance/runtime-ring-buffer-wraparound.md`.

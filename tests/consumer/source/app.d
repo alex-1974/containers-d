@@ -18,7 +18,7 @@ struct SafeMovable
     }
 }
 
-void main() @safe @nogc nothrow
+private void exerciseSafeCore() @safe @nogc nothrow
 {
     StaticRingBuffer!(int, 3) buffer;
 
@@ -46,16 +46,6 @@ void main() @safe @nogc nothrow
     buffer.clear();
     assert(buffer.empty);
 
-    SafeMovable seed;
-    seed.value = 77;
-
-    StaticRingBuffer!(SafeMovable, 2) movable;
-    assert(movable.tryPushBack(seed));
-
-    auto moved = __rvalue(movable);
-    assert(moved.length == 1);
-    assert(moved.front.value == 77);
-
     auto runtime = RingBuffer!int(4);
     assert(runtime.capacity == 4);
     assert(runtime.tryPushBack(100));
@@ -72,9 +62,32 @@ void main() @safe @nogc nothrow
     assert(runtime[0] == 200);
     assert(runtime.back == 500);
 
+    runtime.clear();
+    assert(runtime.empty);
+    assert(runtime.capacity == 4);
+}
+
+void main() @nogc nothrow
+{
+    exerciseSafeCore();
+
+    SafeMovable seed;
+    seed.value = 77;
+
+    StaticRingBuffer!(SafeMovable, 2) movable;
+    assert(movable.tryPushBack(seed));
+
+    auto moved = __rvalue(movable);
+    assert(moved.length == 1);
+    assert(moved.front.value == 77);
+
+    auto runtime = RingBuffer!int(4);
+    assert(runtime.tryPushBack(100));
+    assert(runtime.tryPushBack(200));
+
     auto runtimeMoved = __rvalue(runtime);
     assert(runtime.capacity == 0);
     assert(runtimeMoved.capacity == 4);
-    assert(runtimeMoved.length == 4);
+    assert(runtimeMoved.length == 2);
     runtimeMoved.clear();
 }

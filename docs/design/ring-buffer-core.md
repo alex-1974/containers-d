@@ -1,6 +1,6 @@
 # Ring-buffer semantic core
 
-Status: admitted initial contract for `StaticRingBuffer`; further API remains incremental.
+Status: admitted v0.1 logical contract for `StaticRingBuffer` and `RingBuffer`; further API remains incremental.
 
 This document specializes the workspace engineering contract for the first
 container family in containers-d. It defines the semantics that implementation
@@ -8,13 +8,13 @@ work must preserve. It intentionally does not prescribe a concurrency model.
 
 ## 1. Scope
 
-The first implementation target is a bounded, single-threaded ring buffer with
-compile-time capacity:
+The v0.1 public family contains two bounded, single-threaded ring buffers:
 
-`StaticRingBuffer!(T, Capacity)`
+- `StaticRingBuffer!(T, Capacity)`: compile-time capacity with inline storage;
+- `RingBuffer!T`: runtime capacity with uniquely owned backing storage.
 
-A runtime-capacity `RingBuffer!T` is a later milestone and must preserve the
-same observable sequence semantics where the storage model allows it.
+They preserve the same observable FIFO sequence semantics where their storage
+and ownership models allow it.
 
 SPSC, MPSC and MPMC queues are separate container families. Their atomicity and
 memory-ordering contracts must not leak into this type.
@@ -187,11 +187,11 @@ popFront
 clear
 ```
 
-Names are provisional until implementation probes confirm that the signatures
-work cleanly with D lifetime, move/copy and attribute inference.
+These names form the admitted v0.1 surface. The public family also exposes
+`firstSegment` and `secondSegment` for zero-copy access to wrapped contents.
 
-Additional APIs such as emplacement, overwrite-on-full, mutable segment access,
-iterators/ranges and bulk operations are admitted separately.
+Additional APIs such as separately named emplacement, overwrite-on-full,
+iterators/ranges and bulk operations require separate admission.
 
 ## 8. Borrowed access
 
@@ -335,14 +335,13 @@ hot paths.
 A production optimization that selects between materially different source
 shapes requires reproducible evidence on the supported compiler baselines.
 
-For the initial semantic core, the physical-index wraparound choice is such a
-decision and is benchmarked directly. Representative end-to-end push/pop and
-indexed-traversal baselines may be added as regression evidence as the public
-API stabilizes.
+The fixed-capacity physical-index specialization is backed by
+`evidence/performance/ring-buffer-wraparound.md`.
 
-Two-segment bulk traversal is benchmarked when that segment-access API is
-actually introduced; it is not an admission requirement for a surface that does
-not yet expose segment access.
+The runtime-capacity implementation was separately qualified in M3.3 using
+primitive and whole-operation workloads. The decision and rejected candidates
+are retained in
+`evidence/performance/runtime-ring-buffer-wraparound.md`.
 
 Record compiler version, optimization mode, workload, element type and capacity
 with every material performance result.
@@ -358,8 +357,10 @@ with every material performance result.
 5. performance probes show no avoidable hot-path regression;
 6. documentation and tests describe the same overflow and invalidation rules.
 
-For the initial admitted surface on PR #2, these conditions are satisfied for
-the documented supported element categories. Element types with a D language
-move constructor remain explicitly excluded from whole-buffer move construction
-and are tracked separately in issue #3; that restriction is compile-time
-enforced and is not hidden behind runtime behavior.
+For the v0.1 admitted surface these conditions are satisfied for the documented
+element categories. D language move constructors are preserved for
+`StaticRingBuffer` whole-buffer move construction and for exact-T rvalue
+insertion in both public buffer families.
+
+Nested/local struct element types with hidden outer context are explicitly
+rejected in v0.1 pending the separate research tracked by issue #10.

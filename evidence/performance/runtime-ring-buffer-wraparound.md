@@ -1,8 +1,8 @@
-# Runtime ring-buffer wraparound — M3.3 stage A evidence
+# Runtime ring-buffer wraparound — M3.3 qualification evidence
 
 Issue: #19  
 PR: #20  
-Status: measured primitive wraparound stage; no production optimization admitted yet.
+Status: complete primitive + whole-operation qualification; current production implementation retained.
 
 ## Question
 
@@ -421,12 +421,11 @@ investigation. Stage-A primitive results and Stage-B whole-operation results
 are retained so the same candidates need not be rediscovered without new
 evidence.
 
-## Next stage
+## Final state
 
-M3.3 is complete once this evidence branch passes its final Fast CI and is
-integrated.
+M3.3 is integrated. No `RingBuffer!T` production-code change was required by
+the qualification.
 
-No RingBuffer production-code change is required from the qualification.
-Subsequent planning can therefore move to release preparation or the next
-container family without carrying an unverified runtime wraparound
-optimization.
+The evidence closes the runtime wraparound question for v0.1.0. Reopening it
+requires new compiler evidence, a materially different implementation shape, or
+a concrete consumer requirement.

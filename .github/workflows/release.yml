@@ -1,0 +1,87 @@
+name: Publish Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Publish ${{ github.ref_name }}
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out tagged commit
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Install release compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: dmd-2.111.0
+          dub: 1.40.0
+
+      - name: Verify release identity
+        shell: bash
+        run: |
+          tag="$GITHUB_REF_NAME"
+          version="${tag#v}"
+
+          case "$tag" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *)
+              echo "Release tag must be vMAJOR.MINOR.PATCH: $tag"
+              exit 1
+              ;;
+          esac
+
+          git fetch origin main
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          grep -F "## [$version]" CHANGELOG.md
+
+      - name: Final source-package smoke
+        shell: bash
+        run: |
+          dub describe >/dev/null
+          dub test --compiler="$DC" --force
+          dub build --build=release --compiler="$DC" --force
+
+          mkdir -p build/release-package
+          git archive HEAD | tar -xf - -C build/release-package
+          (cd build/release-package && dub test --compiler="$DC" --force)
+
+      - name: Build release assets
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          archive="containers-d-$version.tar.gz"
+
+          git archive --format=tar.gz --output="$archive" HEAD
+          sha256sum "$archive" > "$archive.sha256"
+
+          awk -v version="$version" '
+            $0 ~ "^## \\[" version "\\] - " { in_release=1; next }
+            in_release && /^## \[/ { exit }
+            in_release { print }
+          ' CHANGELOG.md > RELEASE_NOTES.md
+
+          test -s RELEASE_NOTES.md
+
+      - name: Create GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          archive="containers-d-$version.tar.gz"
+
+          gh release create "$GITHUB_REF_NAME" \
+            "$archive" \
+            "$archive.sha256" \
+            --verify-tag \
+            --title "containers-d $GITHUB_REF_NAME" \
+            --notes-file RELEASE_NOTES.md

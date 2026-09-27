@@ -7,10 +7,15 @@ on:
   push:
     branches:
       - main
+      - 'release/**'
   workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: release-gate-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   compiler-gate:
@@ -36,6 +41,7 @@ jobs:
         uses: dlang-community/setup-dlang@v2
         with:
           compiler: ${{ matrix.compiler }}
+          dub: 1.40.0
 
       - name: Compiler versions
         shell: bash
@@ -60,10 +66,176 @@ jobs:
         shell: bash
         run: DFLAGS="-unittest -preview=dip1000" dub test --compiler="$DC" --force
 
+      - name: External consumer smoke
+        shell: bash
+        run: dub run --root=tests/consumer --compiler="$DC" --force
+
+      - name: External consumer smoke with DIP1000
+        shell: bash
+        run: DFLAGS="-preview=dip1000" dub run --root=tests/consumer --compiler="$DC" --force
+
+      - name: Runtime GC reachability
+        shell: bash
+        run: dub run --root=tests/gc-reachability --compiler="$DC" --force
+
+      - name: DIP1000 borrowed-slice negative compile
+        shell: bash
+        run: |
+          for root in \
+            tests/compile-negative/segment-escape \
+            tests/compile-negative/runtime-segment-escape
+          do
+            if DFLAGS="-preview=dip1000" dub build \
+                --root="$root" \
+                --compiler="$DC" \
+                --force; then
+              echo "Expected borrowed segment escape to fail under DIP1000: $root"
+              false
+            fi
+          done
+
       - name: Release build
         shell: bash
         run: dub build --build=release --compiler="$DC" --force
 
       - name: Documentation build
+        if: matrix.compiler == 'dmd-2.111.0'
         shell: bash
         run: dub build --build=docs --compiler="$DC" --force
+
+  package-gate:
+    name: Release package / DMD 2.111.0
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: dmd-2.111.0
+          dub: 1.40.0
+
+      - name: Verify package metadata
+        shell: bash
+        run: |
+          grep -Fx 'name "containers-d"' dub.sdl
+          grep -Fx 'authors "Alexander Bernardi"' dub.sdl
+          grep -Fx 'copyright "Copyright © 2026 Alexander Bernardi"' dub.sdl
+          grep -Fx 'license "MIT"' dub.sdl
+          grep -Fx 'homepage "https://github.com/alex-1974/containers-d"' dub.sdl
+          grep -Fx 'toolchainRequirements frontend=">=2.111.0"' dub.sdl
+          dub describe >/dev/null
+
+      - name: Verify consumer archive boundary
+        shell: bash
+        run: |
+          mkdir -p build/release-package
+          git archive HEAD | tar -xf - -C build/release-package
+
+          (
+            cd build/release-package
+            printf '%s\n' "=== exported roots ==="
+            find . -mindepth 1 -maxdepth 1 -printf '%f\n' | sort
+
+            test -f README.md
+            test -f LICENSE
+            test -f CHANGELOG.md
+            test -f dub.sdl
+            test -f source/containers/package.d
+
+            for forbidden in \
+              .github docs evidence tests benchmarks \
+              AGENTS.md CONTRIBUTING.md ROADMAP.md RELEASING.md SECURITY.md
+            do
+              test ! -e "$forbidden"
+            done
+          )
+
+      - name: Test exported package
+        shell: bash
+        run: |
+          cd build/release-package
+          dub test --compiler="$DC" --force
+          dub build --build=release --compiler="$DC" --force
+
+      - name: Smoke exported package from an external consumer
+        shell: bash
+        run: |
+          mkdir -p build/archive-consumer/source
+
+          cat > build/archive-consumer/dub.sdl <<'EOF'
+          name "containers-d-archive-consumer"
+          targetType "executable"
+          dependency "containers-d" path="../release-package"
+          EOF
+
+          cat > build/archive-consumer/source/app.d <<'EOF'
+          import containers : RingBuffer, StaticRingBuffer;
+
+          void main() @safe @nogc nothrow
+          {
+              StaticRingBuffer!(int, 2) fixed;
+              assert(fixed.tryPushBack(1));
+
+              auto runtime = RingBuffer!int(2);
+              assert(runtime.tryPushBack(2));
+
+              assert(fixed.front + runtime.front == 3);
+          }
+          EOF
+
+          dub run --root=build/archive-consumer --compiler="$DC" --force
+
+  portability:
+    name: Release portability / ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux ARM64 / LDC latest
+            os: ubuntu-24.04-arm
+          - name: Windows x64 / LDC latest
+            os: windows-latest
+          - name: macOS Intel / LDC latest
+            os: macos-15-intel
+          - name: macOS ARM64 / LDC latest
+            os: macos-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ldc-latest
+
+      - name: Platform and compiler information
+        shell: bash
+        run: |
+          echo "RUNNER_OS=$RUNNER_OS"
+          echo "RUNNER_ARCH=$RUNNER_ARCH"
+          uname -a || true
+          echo "DC=$DC"
+          "$DC" --version
+          dub --version
+
+      - name: Unit tests
+        shell: bash
+        run: dub test --compiler="$DC" --force
+
+      - name: External consumer smoke
+        shell: bash
+        run: dub run --root=tests/consumer --compiler="$DC" --force
+
+      - name: Runtime GC reachability
+        shell: bash
+        run: dub run --root=tests/gc-reachability --compiler="$DC" --force
+
+      - name: Release build
+        shell: bash
+        run: dub build --build=release --compiler="$DC" --force

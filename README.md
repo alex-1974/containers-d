@@ -2,7 +2,42 @@
 
 High-performance generic container primitives for D.
 
-Status: pre-release.
+Current release: `v0.1.0`.
+
+The 0.x line is the API-stabilization period. Minor 0.x releases may make
+breaking public-API changes when required by evidence; patch releases should
+not intentionally break source compatibility.
+
+## Installation
+
+Install the published package through the DUB registry:
+
+```bash
+dub add containers-d@0.1.0
+```
+
+The package root is:
+
+```d
+import containers : RingBuffer, StaticRingBuffer;
+```
+
+## Compatibility
+
+Minimum supported D frontend:
+
+```text
+2.111.0
+```
+
+Normal development is continuously checked with DMD 2.111 and LDC 1.41. The
+v0.1 release gate additionally qualifies DMD 2.112/2.113 and LDC 1.42/1.43 and
+runs portability jobs on Linux, Windows and macOS.
+
+Both public buffers are bounded, single-threaded containers. Nested/local struct
+element types carrying an outer context are deliberately not admitted in the
+v0.1 API; issue #10 owns research into that category. Concurrent SPSC/MPSC/MPMC
+containers, if added later, are separate type families.
 
 ## Ring buffers
 
@@ -88,8 +123,9 @@ stale conservative roots.
 ## Direction
 
 The fixed- and runtime-capacity ring-buffer families are implemented and their
-current hot paths have been qualified on the baseline DMD/LDC toolchains. The
-package remains pre-release while release readiness is evaluated.
+current hot paths have been qualified on the baseline DMD/LDC toolchains.
+v0.1.0 intentionally releases this narrow family before admitting another
+container abstraction.
 
 Future candidates include:
 
