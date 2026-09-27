@@ -83,6 +83,31 @@ private ulong runTailRoom(
     return checksum;
 }
 
+private ulong runAddCarry(
+    scope const IndexPair[] pairs,
+    size_t rounds) nothrow @safe @nogc
+{
+    ulong checksum;
+
+    foreach (_; 0 .. rounds)
+    {
+        foreach (ref const pair; pairs)
+        {
+            size_t index = pair.head + pair.offset;
+
+            // Unsigned carry is detected by index < head. In either the carry
+            // case or the ordinary wrapped-ring case, one subtraction is enough
+            // because head and offset are each strictly below capacity.
+            if (index < pair.head || index >= pair.capacity)
+                index -= pair.capacity;
+
+            checksum += index;
+        }
+    }
+
+    return checksum;
+}
+
 private ulong runModulo(
     scope const IndexPair[] pairs,
     size_t rounds) nothrow @safe @nogc
@@ -198,6 +223,14 @@ extern(C) ulong bench_tailroom(
 }
 
 pragma(inline, false)
+extern(C) ulong bench_addcarry(
+    scope const IndexPair[] pairs,
+    size_t rounds) nothrow @safe @nogc
+{
+    return runAddCarry(pairs, rounds);
+}
+
+pragma(inline, false)
 extern(C) ulong bench_modulo(
     scope const IndexPair[] pairs,
     size_t rounds) nothrow @safe @nogc
@@ -235,7 +268,7 @@ void main(string[] args)
     {
         stderr.writeln(
             "usage: runtime-ring-buffer-wrap-probe ",
-            "<tailroom|modulo|mask|detect|stored> <capacity> <rounds>");
+            "<tailroom|addcarry|modulo|mask|detect|stored> <capacity> <rounds>");
         return;
     }
 
@@ -264,6 +297,9 @@ void main(string[] args)
     {
         case "tailroom":
             checksum = bench_tailroom(pairs[], rounds);
+            break;
+        case "addcarry":
+            checksum = bench_addcarry(pairs[], rounds);
             break;
         case "modulo":
             checksum = bench_modulo(pairs[], rounds);
