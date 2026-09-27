@@ -127,42 +127,42 @@ public:
     }
 
     /// Mutable logical front element.
-    ref T front() return scope
+    ref T front() scope return
     {
         assert(!empty);
         return *_storage.slotPointer(_head);
     }
 
     /// ditto
-    ref const(T) front() const return scope
+    ref const(T) front() const scope return
     {
         assert(!empty);
         return *_storage.slotPointer(_head);
     }
 
     /// Mutable logical back element.
-    ref T back() return scope
+    ref T back() scope return
     {
         assert(!empty);
         return *_storage.slotPointer(physicalIndex(_length - 1));
     }
 
     /// ditto
-    ref const(T) back() const return scope
+    ref const(T) back() const scope return
     {
         assert(!empty);
         return *_storage.slotPointer(physicalIndex(_length - 1));
     }
 
     /// Mutable logical indexed access independent of physical wraparound.
-    ref T opIndex(size_t logicalIndex) return scope
+    ref T opIndex(size_t logicalIndex) scope return
     {
         assert(logicalIndex < _length);
         return *_storage.slotPointer(physicalIndex(logicalIndex));
     }
 
     /// ditto
-    ref const(T) opIndex(size_t logicalIndex) const return scope
+    ref const(T) opIndex(size_t logicalIndex) const scope return
     {
         assert(logicalIndex < _length);
         return *_storage.slotPointer(physicalIndex(logicalIndex));
@@ -175,7 +175,7 @@ public:
      * structural mutation, whole-buffer move, or destruction invalidates
      * previously returned segment slices.
      */
-    T[] firstSegment() return scope @safe @nogc nothrow
+    T[] firstSegment() scope return @safe @nogc nothrow
     {
         if (empty)
             return null;
@@ -189,7 +189,7 @@ public:
     }
 
     /// ditto
-    const(T)[] firstSegment() const return scope @safe @nogc nothrow
+    const(T)[] firstSegment() const scope return @safe @nogc nothrow
     {
         if (empty)
             return null;
@@ -208,7 +208,7 @@ public:
      * The returned slice is empty whenever the logical sequence is physically
      * contiguous.
      */
-    T[] secondSegment() return scope @safe @nogc nothrow
+    T[] secondSegment() scope return @safe @nogc nothrow
     {
         if (empty)
             return null;
@@ -218,7 +218,7 @@ public:
     }
 
     /// ditto
-    const(T)[] secondSegment() const return scope @safe @nogc nothrow
+    const(T)[] secondSegment() const scope return @safe @nogc nothrow
     {
         if (empty)
             return null;
