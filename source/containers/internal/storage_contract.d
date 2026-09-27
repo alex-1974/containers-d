@@ -75,6 +75,7 @@ package(containers) enum bool isReusableRawSlotStorage(S, T) =
 
 version (unittest)
 {
+    import containers.internal.inline_storage : InlineRawStorage;
     import containers.internal.runtime_storage : RuntimeStorageOwner;
 
     private struct InlineRawSlots(T, size_t Capacity)
@@ -184,10 +185,13 @@ version (unittest)
 unittest
 {
     static assert(isRawSlotStorage!(InlineRawSlots!(int, 4), int));
+    static assert(isRawSlotStorage!(InlineRawStorage!(int, 4), int));
     static assert(isRawSlotStorage!(RuntimeStorageOwner!int, int));
 
     static assert(isReusableRawSlotStorage!(
         InlineRawSlots!(int, 4), int));
+    static assert(isReusableRawSlotStorage!(
+        InlineRawStorage!(int, 4), int));
     static assert(isReusableRawSlotStorage!(
         RuntimeStorageOwner!int, int));
 
