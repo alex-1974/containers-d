@@ -1,0 +1,168 @@
+name: Runtime Ring Buffer Operation Probe
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - benchmarks/runtime_ring_buffer_operation_probe.d
+      - source/containers/runtime_ring_buffer.d
+      - source/containers/internal/runtime_storage.d
+      - .github/workflows/perf-runtime-ring-buffer-operations.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  instruction-counts:
+    name: Runtime Ops Ir / ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - dmd-2.111.0
+          - ldc-1.41.0
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ${{ matrix.compiler }}
+
+      - name: Install Callgrind
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y valgrind
+
+      - name: Build probe
+        shell: bash
+        run: |
+          mkdir -p build/perf-runtime-ops
+
+          case "${{ matrix.compiler }}" in
+            dmd-*)
+              "$DC" \
+                -O \
+                -release \
+                -inline \
+                -boundscheck=off \
+                -Isource \
+                -of=build/perf-runtime-ops/runtime-ring-buffer-operation-probe \
+                benchmarks/runtime_ring_buffer_operation_probe.d \
+                source/containers/runtime_ring_buffer.d \
+                source/containers/internal/runtime_storage.d
+              ;;
+            ldc-*)
+              "$DC" \
+                -O3 \
+                -release \
+                -boundscheck=off \
+                -Isource \
+                -of=build/perf-runtime-ops/runtime-ring-buffer-operation-probe \
+                benchmarks/runtime_ring_buffer_operation_probe.d \
+                source/containers/runtime_ring_buffer.d \
+                source/containers/internal/runtime_storage.d
+              ;;
+          esac
+
+          "$DC" --version
+
+      - name: Verify semantic equivalence
+        shell: bash
+        run: |
+          BIN=build/perf-runtime-ops/runtime-ring-buffer-operation-probe
+          ROUNDS=8
+
+          for capacity in 63 64 1000 1024
+          do
+            for workload in index pushpop segments mixed
+            do
+              actual=$("$BIN" actual "$workload" "$capacity" "$ROUNDS" | awk '{print $2}')
+              tailroom=$("$BIN" tailroom "$workload" "$capacity" "$ROUNDS" | awk '{print $2}')
+              addcarry=$("$BIN" addcarry "$workload" "$capacity" "$ROUNDS" | awk '{print $2}')
+
+              echo "capacity=$capacity workload=$workload actual=$actual tailroom=$tailroom addcarry=$addcarry"
+
+              test "$tailroom" = "$actual"
+              test "$addcarry" = "$actual"
+            done
+          done
+
+      - name: Measure retired instructions
+        shell: bash
+        run: |
+          BIN=build/perf-runtime-ops/runtime-ring-buffer-operation-probe
+          ROUNDS=4096
+          OPERATIONS=1048576
+          RESULTS=build/perf-runtime-ops/results.tsv
+
+          printf 'compiler\tvariant\tworkload\tcapacity\toperations\tIr\tchecksum\n' > "$RESULTS"
+
+          measure() {
+            variant="$1"
+            workload="$2"
+            capacity="$3"
+            symbol="bench_${variant}_${workload}"
+            out="build/perf-runtime-ops/callgrind-${variant}-${workload}-${capacity}.out"
+
+            checksum=$("$BIN" "$variant" "$workload" "$capacity" "$ROUNDS" | awk '{print $2}')
+
+            valgrind \
+              --tool=callgrind \
+              --collect-atstart=no \
+              --toggle-collect="$symbol" \
+              --callgrind-out-file="$out" \
+              "$BIN" "$variant" "$workload" "$capacity" "$ROUNDS" \
+              >/dev/null 2>&1
+
+            ir=$(awk '/^summary:/ {print $2}' "$out")
+
+            printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+              "${{ matrix.compiler }}" \
+              "$variant" \
+              "$workload" \
+              "$capacity" \
+              "$OPERATIONS" \
+              "$ir" \
+              "$checksum" \
+              >> "$RESULTS"
+          }
+
+          for capacity in 63 64 1000 1024
+          do
+            for workload in index pushpop segments mixed
+            do
+              for variant in actual tailroom addcarry
+              do
+                measure "$variant" "$workload" "$capacity"
+              done
+            done
+          done
+
+          cat "$RESULTS"
+
+          {
+            echo '### ${{ matrix.compiler }} — runtime RingBuffer operation counts'
+            echo
+            echo '| Variant | Workload | Capacity | Operations | Ir | Ir/op |'
+            echo '|---|---|---:|---:|---:|---:|'
+            awk -F '\t' 'NR > 1 {
+              printf "| %s | %s | %s | %s | %s | %.6f |\n", $2, $3, $4, $5, $6, $6 / $5
+            }' "$RESULTS"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload probe evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-ring-buffer-operations-${{ matrix.compiler }}
+          path: |
+            build/perf-runtime-ops/results.tsv
+            build/perf-runtime-ops/callgrind-*.out
+          if-no-files-found: error

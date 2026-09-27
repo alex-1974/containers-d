@@ -30,7 +30,7 @@ This repository follows the canonical workspace engineering contract under
 - allocation-free steady-state operations;
 - validate generated code and hot-path costs.
 
-## M3 — Runtime-capacity ring buffer
+## M3 — Runtime-capacity ring buffer — complete
 
 ### M3.1 — Storage and ownership contract
 
@@ -52,11 +52,19 @@ Contract: `docs/design/runtime-ring-buffer-storage.md`.
 - wrapped segment access;
 - allocation and adversarial evidence.
 
-### M3.3 — Runtime hot-path qualification
+### M3.3 — Runtime hot-path qualification — complete
 
-- measure runtime wraparound strategies on DMD/LDC;
-- qualify representative push/pop/index/segment paths;
-- retain only evidence-backed runtime specializations.
+- measured runtime wraparound strategies on DMD 2.111 and LDC 1.41;
+- qualified representative push/pop/index/segment and mixed FIFO paths;
+- retained the existing overflow-safe tail-room implementation;
+- admitted no runtime specialization because no candidate improved the
+  representative workload set without material regression or weaker semantics.
+
+Evidence: `evidence/performance/runtime-ring-buffer-wraparound.md`.
+
+M3 is complete. The next milestone is deliberately not admitted here: choose
+between release preparation and the next container family using the normal
+issue/milestone planning process.
 
 ## Later candidates
 

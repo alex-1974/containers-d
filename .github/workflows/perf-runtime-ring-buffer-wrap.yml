@@ -1,0 +1,167 @@
+name: Runtime Ring Buffer Performance Probe
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - benchmarks/runtime_ring_buffer_wrap_probe.d
+      - source/containers/runtime_ring_buffer.d
+      - source/containers/internal/runtime_storage.d
+      - .github/workflows/perf-runtime-ring-buffer-wrap.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  instruction-counts:
+    name: Runtime Wrap Ir / ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - dmd-2.111.0
+          - ldc-1.41.0
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ${{ matrix.compiler }}
+
+      - name: Install Callgrind
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y valgrind
+
+      - name: Build probe
+        shell: bash
+        run: |
+          mkdir -p build/perf-runtime
+
+          case "${{ matrix.compiler }}" in
+            dmd-*)
+              "$DC" \
+                -O \
+                -release \
+                -inline \
+                -boundscheck=off \
+                -of=build/perf-runtime/runtime-ring-buffer-wrap-probe \
+                benchmarks/runtime_ring_buffer_wrap_probe.d
+              ;;
+            ldc-*)
+              "$DC" \
+                -O3 \
+                -release \
+                -boundscheck=off \
+                -of=build/perf-runtime/runtime-ring-buffer-wrap-probe \
+                benchmarks/runtime_ring_buffer_wrap_probe.d
+              ;;
+          esac
+
+          "$DC" --version
+
+      - name: Verify semantic equivalence
+        shell: bash
+        run: |
+          BIN=build/perf-runtime/runtime-ring-buffer-wrap-probe
+          ROUNDS=4096
+
+          for capacity in 7 8 63 64 1000 1024
+          do
+            baseline=$("$BIN" tailroom "$capacity" "$ROUNDS" | awk '{print $2}')
+
+            echo "capacity=$capacity tailroom=$baseline"
+
+            for variant in addcarry modulo detect stored
+            do
+              checksum=$("$BIN" "$variant" "$capacity" "$ROUNDS" | awk '{print $2}')
+              echo "capacity=$capacity $variant=$checksum"
+              test "$checksum" = "$baseline"
+            done
+
+            if [ $((capacity & (capacity - 1))) -eq 0 ]; then
+              checksum=$("$BIN" mask "$capacity" "$ROUNDS" | awk '{print $2}')
+              echo "capacity=$capacity mask=$checksum"
+              test "$checksum" = "$baseline"
+            fi
+          done
+
+      - name: Measure retired instructions
+        shell: bash
+        run: |
+          BIN=build/perf-runtime/runtime-ring-buffer-wrap-probe
+          ROUNDS=4096
+          OPERATIONS=1048576
+          RESULTS=build/perf-runtime/results.tsv
+
+          printf 'compiler\tvariant\tcapacity\toperations\tIr\tchecksum\n' > "$RESULTS"
+
+          measure() {
+            variant="$1"
+            capacity="$2"
+            symbol="$3"
+            out="build/perf-runtime/callgrind-${variant}-${capacity}.out"
+
+            checksum=$("$BIN" "$variant" "$capacity" "$ROUNDS" | awk '{print $2}')
+
+            valgrind \
+              --tool=callgrind \
+              --collect-atstart=no \
+              --toggle-collect="$symbol" \
+              --callgrind-out-file="$out" \
+              "$BIN" "$variant" "$capacity" "$ROUNDS" \
+              >/dev/null 2>&1
+
+            ir=$(awk '/^summary:/ {print $2}' "$out")
+
+            printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+              "${{ matrix.compiler }}" \
+              "$variant" \
+              "$capacity" \
+              "$OPERATIONS" \
+              "$ir" \
+              "$checksum" \
+              >> "$RESULTS"
+          }
+
+          for capacity in 7 8 63 64 1000 1024
+          do
+            measure tailroom "$capacity" bench_tailroom
+            measure addcarry "$capacity" bench_addcarry
+            measure modulo "$capacity" bench_modulo
+            measure detect "$capacity" bench_detect
+            measure stored "$capacity" bench_stored
+
+            if [ $((capacity & (capacity - 1))) -eq 0 ]; then
+              measure mask "$capacity" bench_mask
+            fi
+          done
+
+          cat "$RESULTS"
+
+          {
+            echo '### ${{ matrix.compiler }} — runtime ring-buffer wrap instruction counts'
+            echo
+            echo '| Variant | Capacity | Operations | Ir | Ir/op |'
+            echo '|---|---:|---:|---:|---:|'
+            awk -F '\t' 'NR > 1 {
+              printf "| %s | %s | %s | %s | %.6f |\n", $2, $3, $4, $5, $5 / $4
+            }' "$RESULTS"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload probe evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-ring-buffer-wrap-${{ matrix.compiler }}
+          path: |
+            build/perf-runtime/results.tsv
+            build/perf-runtime/callgrind-*.out
+          if-no-files-found: error

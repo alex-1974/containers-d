@@ -87,12 +87,15 @@ stale conservative roots.
 
 ## Direction
 
+The fixed- and runtime-capacity ring-buffer families are implemented and their
+current hot paths have been qualified on the baseline DMD/LDC toolchains. The
+package remains pre-release while release readiness is evaluated.
+
 Future candidates include:
 
-- runtime-capacity ring buffers;
 - FIFO queues;
 - LIFO/FILO stacks;
-- contiguous segment access for wrapped storage;
+- deque-like structures where justified;
 - separately designed concurrent SPSC/MPMC structures.
 
 Materially different storage, ownership, overflow, allocation or concurrency
