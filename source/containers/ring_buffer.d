@@ -89,7 +89,7 @@ version (unittest)
             self = &this.value;
         }
 
-        this(return scope SelfReferentialTestElement rhs) @safe nothrow @nogc
+        this(return scope SelfReferentialTestElement rhs) @system nothrow @nogc
         {
             value = rhs.value;
             self = &this.value;
