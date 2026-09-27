@@ -97,9 +97,9 @@ if (hasLanguageMoveConstructor!T &&
  */
 package(containers) mixin template PlacementMoveOps(T)
 {
-    static if (hasLanguageMoveConstructor!T)
+    static if (containers.internal.element_lifetime.hasLanguageMoveConstructor!T)
     {
-        static if (safeLanguageMoveConstructible!T)
+        static if (containers.internal.element_lifetime.safeLanguageMoveConstructible!T)
         {
             private static T* placementMoveConstruct(
                 T* target,
