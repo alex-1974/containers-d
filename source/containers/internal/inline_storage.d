@@ -15,7 +15,7 @@ import std.traits : hasElaborateDestructor, hasIndirections, isNested;
  * solely so the compiler can describe possible T pointer offsets to the GC.
  * Live T lifetimes are begun and ended explicitly through the byte view.
  */
-private align(T.alignof) union InlineRawStoragePayload(T, size_t Capacity)
+private union InlineRawStoragePayload(T, size_t Capacity)
 {
     static if (hasIndirections!T)
     {
@@ -57,9 +57,9 @@ private:
     alias Payload = InlineRawStoragePayload!(T, Capacity);
 
     static if (hasIndirections!T)
-        Payload _payload = Payload.init;
+        align(T.alignof) Payload _payload = Payload.init;
     else
-        Payload _payload = void;
+        align(T.alignof) Payload _payload = void;
 
 package(containers):
     T* slotPointer(size_t physicalIndex)
