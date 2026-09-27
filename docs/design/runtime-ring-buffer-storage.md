@@ -1,6 +1,6 @@
 # Runtime-capacity ring buffer — storage and ownership contract
 
-Status: M3.1 design decision for the first runtime-capacity owning ring buffer.
+Status: admitted storage/ownership contract for the runtime-capacity owning ring buffer.
 
 This document specializes the workspace ownership, lifetime, allocation and
 safety rules for `RingBuffer!T`. It does not change the admitted
@@ -101,6 +101,12 @@ to the element's own alignment requirement.
 The container does not use allocator reallocation for ordinary operation.
 
 ## 5. Raw storage and element lifetime
+
+Class and interface references are slot values rather than owned referents.
+Removing them clears the stored reference representation but does not explicitly
+finalize the referenced object. Explicit destruction is required only for
+element representations with elaborate struct destruction.
+
 
 The allocation owns raw storage for exactly `capacity` potential `T` slots.
 
