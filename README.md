@@ -46,9 +46,9 @@ The slices borrow the buffer's inline storage. Successful structural mutation
 invalidates previously returned segment slices; a failed `tryPushBack` on a
 full buffer does not.
 
-Whole-buffer copy construction is available when `T` is copyable. Whole-buffer
-move construction currently excludes element types that define a D language
-move constructor; that toolchain/lifetime boundary is tracked in issue #3.
+Whole-buffer copy construction is available when `T` is copyable.
+Whole-buffer move construction preserves D language move constructors when
+present and otherwise uses the classic relocation/`opPostMove` path.
 
 ## Direction
 

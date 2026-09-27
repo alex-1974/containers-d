@@ -2,6 +2,22 @@ module app;
 
 import containers : StaticRingBuffer;
 
+struct SafeMovable
+{
+    int value;
+
+    this(ref return scope SafeMovable rhs) @safe @nogc nothrow
+    {
+        value = rhs.value;
+    }
+
+    this(return scope SafeMovable rhs) @safe @nogc nothrow
+    {
+        value = rhs.value;
+        rhs.value = -1;
+    }
+}
+
 void main() @safe @nogc nothrow
 {
     StaticRingBuffer!(int, 3) buffer;
@@ -29,4 +45,14 @@ void main() @safe @nogc nothrow
 
     buffer.clear();
     assert(buffer.empty);
+
+    SafeMovable seed;
+    seed.value = 77;
+
+    StaticRingBuffer!(SafeMovable, 2) movable;
+    assert(movable.tryPushBack(seed));
+
+    auto moved = __rvalue(movable);
+    assert(moved.length == 1);
+    assert(moved.front.value == 77);
 }

@@ -12,3 +12,5 @@
   wraparound arithmetic.
 - Borrowed contiguous segment access through `firstSegment` and
   `secondSegment`, including DIP1000 lifetime validation.
+- Whole-buffer move construction for element types with D language move
+  constructors, using placement new at the final inline-storage address.

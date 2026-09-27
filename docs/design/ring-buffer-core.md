@@ -104,32 +104,36 @@ non-trivial `T`.
 Copy construction is element-wise and mirrors `T`'s copyability. When `T` is
 not copyable, buffer copy construction is disabled.
 
-Whole-buffer move construction currently has one explicit temporary
-restriction: element types that define a D language move constructor are not
-accepted for buffer move construction on the baseline implementation.
+Whole-buffer move construction has two deliberately distinct element paths.
 
-The reason is concrete rather than theoretical. DMD 2.111
-`core.lifetime.moveEmplace` implements raw relocation with
-blit/`opPostMove`/wipe semantics and does not dispatch the newer language move
-constructor. Silently using that path for such a `T` could bypass invariants
-encoded in `T.this(T)`.
+When `__traits(hasMoveConstructor, T)` is true, the destination element is
+constructed at its final inline-storage address with D 2.111 placement new and
+`__rvalue(source)`. This dispatches `T.this(T)` and therefore preserves
+invariants implemented by a language move constructor, including
+self-referential/internal-pointer repair.
 
-For element types without a language move constructor, the implementation uses
-`moveEmplace` into uninitialized inline storage, explicitly destroys the
-wiped moved-from source object, and then removes that slot from the source
+Placement new is a language-level `@system` operation. The implementation
+contains only that storage operation in a narrow trust boundary, and only when
+ordinary move construction of `T` is independently accepted by `@safe`
+code. An unsafe element move constructor must not be laundered into a safe
+container operation.
+
+For element types without a language move constructor, the implementation keeps
+the classic `moveEmplace` path. This preserves the established
+destructive-relocation/`opPostMove` contract used by types that repair
+self-references after relocation.
+
+After either path successfully begins the destination lifetime, the moved-from
+source slot is explicitly destroyed exactly once and removed from the source
 buffer's live-element accounting.
 
-Support for element language move constructors remains a research/implementation
-item and must be solved without weakening the baseline compiler contract.
+The implementation must not substitute `moveEmplace` for a language move
+constructor: research on DMD 2.111/LDC 1.41 plus DMD 2.113/LDC 1.43 confirmed
+that `moveEmplace` does not dispatch `T.this(T)`.
 
-Before `StaticRingBuffer` is admitted to the public facade, its behavior must
-be correct for the supported non-trivial element categories and every temporary
-restriction must be explicit.
-
-Silently supporting only trivial element types is not acceptable.
-
-Tests must include non-trivial copy/destruction cases, ownership-transfer cases,
-and compile-time rejection of unsupported move-constructor element categories.
+Tests include non-trivial copy/destruction cases, classic relocation ownership
+transfer, language-move dispatch, and a self-referential element whose target
+would be invalid after plain bit relocation.
 
 ## 6. Overflow and underflow
 
