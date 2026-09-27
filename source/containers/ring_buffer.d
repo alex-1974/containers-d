@@ -11,6 +11,7 @@
 module containers.ring_buffer;
 
 import containers.internal.element_lifetime :
+    EndElementLifetimeOps,
     PlacementMoveOps,
     sharedElementCopyConstructible = elementCopyConstructible;
 import core.lifetime : emplace, forward, moveEmplace;
@@ -194,6 +195,7 @@ struct StaticRingBuffer(T, size_t Capacity)
 
 private:
     mixin PlacementMoveOps!T;
+    mixin EndElementLifetimeOps!T;
 
     // The raw bytes are the only storage member used by container logic.
     //
@@ -310,8 +312,7 @@ private:
 
     void endSlotLifetime(size_t physicalIndex)
     {
-        static if (hasElaborateDestructor!T)
-            destroy!false(*slotPointer(physicalIndex));
+        endElementLifetime(slotPointer(physicalIndex));
 
         // Class/interface references and other non-struct indirections are
         // values stored in the slot; removing them must not finalize the
