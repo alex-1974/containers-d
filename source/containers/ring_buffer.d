@@ -994,16 +994,19 @@ unittest
 
 unittest
 {
-    // Rvalue insertion of a language-move element must invoke T.this(T) at the
-    // final slot address rather than relying on core.lifetime.emplace.
-    alias MoveOnly = MoveOnlyTestElement;
+    // Rvalue insertion must construct a language-move element at the final
+    // slot address. Plain relocation from an intermediate value would leave
+    // the self pointer referring to the wrong object.
+    alias SelfReferential = SelfReferentialTestElement;
 
-    auto seed = MoveOnly(73);
-    StaticRingBuffer!(MoveOnly, 1) buffer;
+    SelfReferential.moves = 0;
+    auto seed = SelfReferential(73);
+    StaticRingBuffer!(SelfReferential, 1) buffer;
 
     assert(buffer.tryPushBack(__rvalue(seed)));
-    assert(seed.value == -1);
     assert(buffer.front.value == 73);
+    assert(buffer.front.selfValid);
+    assert(SelfReferential.moves >= 1);
 }
 
 unittest
