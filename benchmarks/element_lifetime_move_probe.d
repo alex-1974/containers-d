@@ -8,7 +8,8 @@
  */
 module containers.element_lifetime_move_probe;
 
-import containers.internal.element_lifetime : ElementLifetimeOps;
+import containers.internal.element_lifetime :
+    sharedPlacementMoveConstruct = placementMoveConstruct;
 import std.conv : to;
 import std.stdio : stderr, writeln;
 
@@ -98,8 +99,7 @@ extern(C) ulong bench_shared(size_t rounds) @safe @nogc nothrow
     {
         auto source = MoveValue(cast(ulong) i + 1);
         auto placed =
-            ElementLifetimeOps!MoveValue.placementMoveConstruct(
-                target, source);
+            sharedPlacementMoveConstruct!MoveValue(target, source);
 
         checksum += placed.checksum;
         destroy!false(*placed);
