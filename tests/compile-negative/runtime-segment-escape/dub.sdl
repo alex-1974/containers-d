@@ -1,0 +1,5 @@
+name "containers-d-runtime-segment-escape-negative"
+description "Negative DIP1000 lifetime probe for runtime ring-buffer segment slices"
+targetType "executable"
+
+dependency "containers-d" path="../../../"

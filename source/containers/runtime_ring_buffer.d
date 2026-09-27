@@ -169,6 +169,65 @@ public:
     }
 
     /**
+     * Returns the first contiguous physical segment in logical FIFO order.
+     *
+     * The returned slice borrows the owned backing allocation. Successful
+     * structural mutation, whole-buffer move, or destruction invalidates
+     * previously returned segment slices.
+     */
+    T[] firstSegment() return scope @safe @nogc nothrow
+    {
+        if (empty)
+            return null;
+
+        const physicalRemaining = capacity - _head;
+        const count = _length < physicalRemaining
+            ? _length
+            : physicalRemaining;
+
+        return _storage.slotSlice(_head, count);
+    }
+
+    /// ditto
+    const(T)[] firstSegment() const return scope @safe @nogc nothrow
+    {
+        if (empty)
+            return null;
+
+        const physicalRemaining = capacity - _head;
+        const count = _length < physicalRemaining
+            ? _length
+            : physicalRemaining;
+
+        return _storage.slotSlice(_head, count);
+    }
+
+    /**
+     * Returns the wrapped continuation after $(LREF firstSegment).
+     *
+     * The returned slice is empty whenever the logical sequence is physically
+     * contiguous.
+     */
+    T[] secondSegment() return scope @safe @nogc nothrow
+    {
+        if (empty)
+            return null;
+
+        const firstCount = firstSegment.length;
+        return _storage.slotSlice(0, _length - firstCount);
+    }
+
+    /// ditto
+    const(T)[] secondSegment() const return scope @safe @nogc nothrow
+    {
+        if (empty)
+            return null;
+
+        const firstCount = firstSegment.length;
+        return _storage.slotSlice(0, _length - firstCount);
+    }
+
+    /**
      * Appends one element without overwriting existing contents.
      *
      * Returns false when full. A failed insertion leaves the logical sequence
@@ -513,4 +572,60 @@ unittest
 
     assert(buffer.empty);
     assert(!object.finalized);
+}
+
+unittest
+{
+    auto buffer = RingBuffer!int(4);
+
+    assert(buffer.firstSegment.length == 0);
+    assert(buffer.secondSegment.length == 0);
+
+    assert(buffer.tryPushBack(10));
+    assert(buffer.tryPushBack(20));
+    assert(buffer.tryPushBack(30));
+
+    assert(buffer.firstSegment == [10, 20, 30]);
+    assert(buffer.secondSegment.length == 0);
+
+    buffer.popFront();
+    buffer.popFront();
+
+    assert(buffer.tryPushBack(40));
+    assert(buffer.tryPushBack(50));
+    assert(buffer.tryPushBack(60));
+
+    assert(buffer.firstSegment == [30, 40]);
+    assert(buffer.secondSegment == [50, 60]);
+    assert(buffer.firstSegment.length + buffer.secondSegment.length == buffer.length);
+
+    buffer.secondSegment[0] = 51;
+    assert(buffer[2] == 51);
+}
+
+unittest
+{
+    // A full runtime ring with a non-zero head is represented by two physical
+    // segments whose concatenation is the exact logical FIFO sequence.
+    auto buffer = RingBuffer!int(4);
+
+    foreach (value; 1 .. 5)
+        assert(buffer.tryPushBack(value));
+
+    assert(buffer.firstSegment == [1, 2, 3, 4]);
+    assert(buffer.secondSegment.length == 0);
+
+    buffer.popFront();
+    assert(buffer.tryPushBack(5));
+
+    assert(buffer.firstSegment == [2, 3, 4]);
+    assert(buffer.secondSegment == [5]);
+
+    size_t logicalIndex;
+    foreach (value; buffer.firstSegment)
+        assert(value == buffer[logicalIndex++]);
+    foreach (value; buffer.secondSegment)
+        assert(value == buffer[logicalIndex++]);
+
+    assert(logicalIndex == buffer.length);
 }
