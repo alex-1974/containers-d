@@ -19,7 +19,7 @@ void main() @safe @nogc nothrow
     assert(first.length + second.length == buffer.length);
     assert(first[0] == 10);
     assert(first[1] == 20);
-    assert(second.empty);
+    assert(second.length == 0);
 
     first[1] = 21;
     assert(buffer.back == 21);

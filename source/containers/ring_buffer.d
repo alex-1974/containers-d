@@ -1040,16 +1040,16 @@ unittest
     // Empty and capacity-one segment laws.
     StaticRingBuffer!(int, 1) buffer;
 
-    assert(buffer.firstSegment.empty);
-    assert(buffer.secondSegment.empty);
+    assert(buffer.firstSegment.length == 0);
+    assert(buffer.secondSegment.length == 0);
 
     assert(buffer.tryPushBack(7));
     assert(buffer.firstSegment == [7]);
-    assert(buffer.secondSegment.empty);
+    assert(buffer.secondSegment.length == 0);
 
     buffer.popFront();
-    assert(buffer.firstSegment.empty);
-    assert(buffer.secondSegment.empty);
+    assert(buffer.firstSegment.length == 0);
+    assert(buffer.secondSegment.length == 0);
 }
 
 unittest
@@ -1062,7 +1062,7 @@ unittest
         assert(buffer.tryPushBack(value));
 
     assert(buffer.firstSegment == [1, 2, 3, 4]);
-    assert(buffer.secondSegment.empty);
+    assert(buffer.secondSegment.length == 0);
 
     buffer.popFront();
     assert(buffer.tryPushBack(5));
