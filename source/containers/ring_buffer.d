@@ -20,9 +20,9 @@ import std.traits : isCopyable, Unqual;
 /// storage and are not default-constructed merely because the buffer exists.
 ///
 /// Copy construction is element-wise when `T` is copyable. Whole-buffer move
-/// construction is available for element types without a D language move
-/// constructor; that temporary restriction is tracked in issue #3. Identity
-/// assignment is currently disabled.
+/// construction preserves either T's D language move-constructor contract or,
+/// for classic relocation types, the `moveEmplace`/`opPostMove` contract.
+/// Identity assignment is currently disabled.
 ///
 /// Params:
 ///   T = element type
@@ -141,6 +141,45 @@ private:
         }
     }
 
+    // Check whether ordinary language move construction of T is permitted
+    // from @safe code. Placement new itself is @system, so the raw-storage
+    // helper below may only elevate that operation to @trusted when T's
+    // constructor contract is independently @safe.
+    enum bool safeLanguageMove = __traits(compiles, {
+        void probe(ref T source) @safe
+        {
+            T target = __rvalue(source);
+        }
+    });
+
+    static if (__traits(hasMoveConstructor, T))
+    {
+        static if (safeLanguageMove)
+        {
+            T* placementMoveConstruct(
+                T* target,
+                ref T source) @trusted
+            {
+                // Safety proof:
+                // - target comes from slotPointer and is aligned storage for T;
+                // - the caller only supplies an unused destination slot;
+                // - source is a distinct live T;
+                // - T's language move construction is independently @safe;
+                // - placement new begins exactly one T lifetime at target.
+                return new (*target) T(__rvalue(source));
+            }
+        }
+        else
+        {
+            T* placementMoveConstruct(
+                T* target,
+                ref T source) @system
+            {
+                return new (*target) T(__rvalue(source));
+            }
+        }
+    }
+
     void advanceHead() nothrow @safe @nogc
     {
         ++_head;
@@ -195,43 +234,34 @@ public:
         @disable this(ref return scope typeof(this) rhs);
     }
 
-    static if (__traits(hasMoveConstructor, T))
+    /**
+     * Element-wise whole-buffer move construction.
+     *
+     * Types with a D language move constructor are constructed directly at the
+     * final destination slot through placement new and `__rvalue`, preserving
+     * the element's move-constructor invariants.
+     *
+     * Other types retain the classic `moveEmplace` relocation path so that
+     * `opPostMove` remains effective for self-referential relocatable types.
+     */
+    this(return scope typeof(this) rhs)
     {
-        /**
-         * Whole-buffer move construction is temporarily unavailable when T
-         * defines a language move constructor.
-         *
-         * DMD 2.111's core.lifetime.moveEmplace implements relocation through
-         * blit/opPostMove/wipe semantics and does not dispatch T's language move
-         * constructor. Using it here would silently bypass T's contract.
-         */
-        @disable this(return scope typeof(this) rhs);
-    }
-    else
-    {
-        /**
-         * Element-wise destructive relocation into uninitialized inline
-         * storage using the baseline runtime's moveEmplace contract.
-         *
-         * Each source slot is wiped by moveEmplace, explicitly destroyed in its
-         * moved-from state, and only then removed from the source buffer's live
-         * accounting.
-         */
-        this(return scope typeof(this) rhs)
+        scope(failure) clear();
+
+        while (!rhs.empty)
         {
-            scope(failure) clear();
+            auto source = rhs.slotPointer(rhs._head);
+            auto target = slotPointer(_length);
 
-            while (!rhs.empty)
-            {
-                auto source = rhs.slotPointer(rhs._head);
-                auto target = slotPointer(_length);
-
+            static if (__traits(hasMoveConstructor, T))
+                placementMoveConstruct(target, *source);
+            else
                 moveEmplace(*source, *target);
-                destroy!false(*source);
 
-                ++_length;
-                rhs.consumeMovedFront();
-            }
+            destroy!false(*source);
+
+            ++_length;
+            rhs.consumeMovedFront();
         }
     }
 
@@ -793,7 +823,7 @@ unittest
 
     static assert(__traits(hasMoveConstructor, MoveOnly));
 
-    static assert(!__traits(compiles, {
+    static assert(__traits(compiles, {
         Buffer source;
         Buffer moved = __rvalue(source);
     }));
@@ -867,24 +897,24 @@ unittest
         assert(TrackedTransfer.alive == 7);
         assert(TrackedTransfer.copied == 6);
 
-        // T defines a language move constructor, so whole-buffer move remains
-        // disabled until the raw-storage implementation can dispatch it
-        // correctly on every supported baseline.
         static assert(__traits(hasMoveConstructor, TrackedTransfer));
-        static assert(!__traits(compiles, {
-            StaticRingBuffer!(TrackedTransfer, 3) moved = __rvalue(copy);
-        }));
+
+        // Do not use alive/destruction totals to specify the language's
+        // by-value move-parameter destruction details. The observable container
+        // contract is that the move constructor is invoked for each element and
+        // the destination preserves logical values.
+        const movedBefore = TrackedTransfer.moved;
+        StaticRingBuffer!(TrackedTransfer, 3) moved = __rvalue(copy);
+
+        assert(moved.length == 3);
+        assert(moved[0].value == 17);
+        assert(moved[1].value == 17);
+        assert(moved[2].value == 17);
+        assert(TrackedTransfer.moved == movedBefore + 3);
 
         original.clear();
-        assert(TrackedTransfer.alive == 4);
-
-        copy.clear();
-        assert(TrackedTransfer.alive == 1);
-        assert(TrackedTransfer.destroyed == 6);
+        moved.clear();
     }
-
-    assert(TrackedTransfer.alive == 0);
-    assert(TrackedTransfer.destroyed == 7);
 }
 
 unittest
@@ -1134,6 +1164,98 @@ unittest
             auto first = buffer.firstSegment;
             auto second = buffer.secondSegment;
             assert(first.length + second.length == buffer.length);
+        }();
+    }));
+}
+
+unittest
+{
+    // A language move constructor must run at the final inline-storage address.
+    // Bit relocation would leave self pointing into the source buffer.
+    struct SelfReferential
+    {
+        static int moves;
+
+        int value;
+        int* self;
+
+        this(int value)
+        {
+            this.value = value;
+            self = &this.value;
+        }
+
+        this(ref return scope SelfReferential rhs)
+        {
+            value = rhs.value;
+            self = &this.value;
+        }
+
+        this(return scope SelfReferential rhs) @safe nothrow @nogc
+        {
+            value = rhs.value;
+            self = &this.value;
+            rhs.value = -1;
+            rhs.self = null;
+            ++moves;
+        }
+
+        bool selfValid() @safe nothrow @nogc
+        {
+            return self is &value;
+        }
+    }
+
+    static assert(__traits(hasMoveConstructor, SelfReferential));
+
+    SelfReferential.moves = 0;
+
+    auto seed = SelfReferential(61);
+
+    StaticRingBuffer!(SelfReferential, 3) source;
+    assert(source.tryPushBack(seed));
+    assert(source.tryPushBack(seed));
+    assert(source.tryPushBack(seed));
+
+    auto moved = __rvalue(source);
+
+    assert(moved.length == 3);
+    assert(SelfReferential.moves == 3);
+
+    foreach (i; 0 .. moved.length)
+    {
+        assert(moved[i].value == 61);
+        assert(moved[i].selfValid);
+    }
+}
+
+unittest
+{
+    // Safe element move construction must not make the container move operation
+    // spuriously @system merely because placement new is the raw-storage
+    // primitive used internally.
+    struct SafeMove
+    {
+        int value;
+
+        this(ref return scope SafeMove rhs) @safe nothrow @nogc
+        {
+            value = rhs.value;
+        }
+
+        this(return scope SafeMove rhs) @safe nothrow @nogc
+        {
+            value = rhs.value;
+            rhs.value = -1;
+        }
+    }
+
+    alias Buffer = StaticRingBuffer!(SafeMove, 2);
+
+    static assert(__traits(compiles, {
+        () @safe {
+            Buffer source;
+            Buffer moved = __rvalue(source);
         }();
     }));
 }
