@@ -304,8 +304,15 @@ private ulong runSegments(Buffer)(
 
     foreach (_; 0 .. rounds)
     {
-        foreach (_operation; operations)
+        foreach (ref const operation; operations)
         {
+            // Rotate the full ring before querying its physical segments. This
+            // makes head/segment boundaries change continuously so an optimizer
+            // cannot hoist or collapse the segment calculation out of the loop.
+            buffer.popFront();
+            const accepted = buffer.tryPushBack(operation.value);
+            assert(accepted);
+
             auto first = buffer.firstSegment;
             auto second = buffer.secondSegment;
 
