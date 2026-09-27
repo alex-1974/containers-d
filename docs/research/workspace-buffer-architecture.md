@@ -3,6 +3,8 @@
 Status: active research  
 Tracking: issue #23
 
+Related feasibility study: `docs/research/container-family-architecture-feasibility.md`.
+
 ## Purpose
 
 The next `containers-d` family must be selected from demonstrated consumer
