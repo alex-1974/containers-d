@@ -30,6 +30,18 @@ private bool checkedStorageBytes(T)(
     return true;
 }
 
+private void addGcRange(ubyte[] bytes) @trusted @nogc nothrow
+{
+    assert(bytes.length != 0);
+    GC.addRange(bytes.ptr, bytes.length);
+}
+
+private void removeGcRange(ubyte[] bytes) @trusted @nogc nothrow
+{
+    assert(bytes.length != 0);
+    GC.removeRange(bytes.ptr);
+}
+
 private struct AlignedStorageBackend
 {
     static ubyte[] acquire(
@@ -76,7 +88,7 @@ private:
                 // Registered external memory is scanned conservatively. Start
                 // with no stale pointer representations in unused slots.
                 _bytes[] = 0;
-                GC.addRange(&_bytes[0], _bytes.length);
+                addGcRange(_bytes);
             }
         }
     }
@@ -86,7 +98,7 @@ private:
         static if (hasIndirections!T)
         {
             if (_bytes.ptr !is null)
-                GC.removeRange(&_bytes[0]);
+                removeGcRange(_bytes);
         }
     }
 
