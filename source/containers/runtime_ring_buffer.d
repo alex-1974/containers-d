@@ -5,8 +5,7 @@
  */
 module containers.runtime_ring_buffer;
 
-import containers.internal.element_lifetime :
-    ElementLifetimeOps;
+import containers.internal.element_lifetime : PlacementMoveOps;
 import containers.internal.runtime_storage : RuntimeStorageOwner;
 import core.lifetime : emplace, forward;
 import std.traits : hasElaborateDestructor, hasIndirections, isNested, Unqual;
@@ -29,6 +28,8 @@ struct RingBuffer(T)
         "RingBuffer v0.1 does not support nested/local struct element types with hidden context/indirections");
 
 private:
+    mixin PlacementMoveOps!T;
+
     RuntimeStorageOwner!T _storage;
     size_t _head;
     size_t _length;
@@ -298,7 +299,7 @@ public:
             is(U == T) &&
             !__traits(isRef, value))
         {
-            ElementLifetimeOps!T.placementMoveConstruct(
+            placementMoveConstruct(
                 _storage.slotPointer(physical), value);
         }
         else
