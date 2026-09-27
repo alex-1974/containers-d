@@ -10,7 +10,7 @@ import containers.internal.element_lifetime :
     PlacementMoveOps;
 import containers.internal.runtime_storage : RuntimeStorageOwner;
 import core.lifetime : emplace, forward;
-import std.traits : hasElaborateDestructor, hasIndirections, isNested, Unqual;
+import std.traits : hasIndirections, isNested, Unqual;
 
 /**
  * Owning bounded FIFO ring buffer with runtime-selected capacity.
