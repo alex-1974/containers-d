@@ -1,6 +1,7 @@
 name "containers-d"
 description "High-performance generic container primitives"
 authors "Alexander Bernardi"
+copyright "Copyright © 2026 Alexander Bernardi"
 license "MIT"
 homepage "https://github.com/alex-1974/containers-d"
 

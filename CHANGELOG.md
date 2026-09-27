@@ -1,20 +1,50 @@
 # Changelog
 
-## Unreleased
+All notable changes to `containers-d` are documented here.
+
+The project follows Semantic Versioning for published releases.
+
+## [Unreleased]
+
+No unreleased changes.
+
+## [0.1.0] - 2026-09-27
+
+Initial public development release of the bounded single-threaded ring-buffer
+family.
 
 ### Added
 
-- Initial repository structure.
-- `StaticRingBuffer!(T, Capacity)` with inline storage, explicit live-element
-  lifetimes, non-overwriting insertion, FIFO removal, indexed access, and
-  compiler-tested wraparound specialization.
-- Reproducible Callgrind evidence for power-of-two and non-power-of-two
-  wraparound arithmetic.
-- Borrowed contiguous segment access through `firstSegment` and
-  `secondSegment`, including DIP1000 lifetime validation.
-- Whole-buffer move construction for element types with D language move
-  constructors, using placement new at the final inline-storage address.
-- `RingBuffer!T` with runtime-selected capacity, unique backing-storage
-  ownership, O(1) owner move, and zero-copy segment access.
-- Correct reference-value removal semantics: stored class/interface references
-  are cleared without explicitly finalizing the referenced object.
+- `StaticRingBuffer!(T, Capacity)` with compile-time capacity and inline raw
+  storage.
+- `RingBuffer!T` with runtime-selected capacity, unique aligned backing
+  storage, inert capacity-zero state and O(1) ownership move.
+- Non-overwriting `tryPushBack`, FIFO `popFront`, `clear`, front/back and
+  logical indexed access.
+- Zero-copy `firstSegment` / `secondSegment` access for contiguous processing
+  of wrapped logical contents.
+- Explicit live-element lifetime management for non-trivial element types.
+- Language-move-constructor preservation for whole-buffer static moves and for
+  exact-T rvalue insertion at the final storage address.
+- GC range registration for runtime C-heap storage containing GC-visible
+  indirections, with stale-slot clearing after removal.
+- External consumer, DIP1000 borrow-lifetime, GC reachability and adversarial
+  model validation.
+- Reproducible Callgrind evidence for fixed- and runtime-capacity wraparound hot
+  paths on the baseline DMD/LDC compilers.
+
+### Changed
+
+- Nested/local struct element types with hidden outer context are explicitly
+  rejected in the v0.1 API until their lifetime/context contract is researched
+  separately in issue #10.
+- Runtime hot-path qualification retained the overflow-safe tail-room
+  implementation; no compiler-specific or power-of-two runtime specialization
+  is admitted by v0.1.0.
+
+### Compatibility
+
+- Minimum supported D frontend: 2.111.0.
+- Baseline development compilers: DMD 2.111.0 and LDC 1.41.0.
+- The v0.1 release gate qualifies the controlled DMD 2.111/2.112/2.113 and LDC
+  1.41/1.42/1.43 matrix before publication.

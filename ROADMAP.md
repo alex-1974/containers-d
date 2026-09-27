@@ -66,6 +66,17 @@ M3 is complete. The next milestone is deliberately not admitted here: choose
 between release preparation and the next container family using the normal
 issue/milestone planning process.
 
+## Release v0.1.0 — in qualification
+
+- freeze the first public ring-buffer family;
+- resolve release-relevant element-type contract questions;
+- align stable documentation with the admitted implementation;
+- qualify the six-compiler release matrix and portability jobs;
+- verify the exported consumer archive;
+- publish the first qualified `main` state as annotated tag `v0.1.0`.
+
+Tracking: issue #21.
+
 ## Later candidates
 
 - FIFO queues;
