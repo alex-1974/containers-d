@@ -510,7 +510,7 @@ public:
      * Allocation:
      *   None.
      */
-    T[] firstSegment() scope return nothrow @safe @nogc
+    T[] firstSegment() scope return nothrow @trusted @nogc
     {
         if (empty)
             return null;
@@ -524,7 +524,7 @@ public:
     }
 
     /// ditto
-    const(T)[] firstSegment() const scope return nothrow @safe @nogc
+    const(T)[] firstSegment() const scope return nothrow @trusted @nogc
     {
         if (empty)
             return null;
@@ -549,7 +549,7 @@ public:
      * Allocation:
      *   None.
      */
-    T[] secondSegment() scope return nothrow @safe @nogc
+    T[] secondSegment() scope return nothrow @trusted @nogc
     {
         if (empty)
             return null;
@@ -560,7 +560,7 @@ public:
     }
 
     /// ditto
-    const(T)[] secondSegment() const scope return nothrow @safe @nogc
+    const(T)[] secondSegment() const scope return nothrow @trusted @nogc
     {
         if (empty)
             return null;
