@@ -11,12 +11,26 @@
 module containers.ring_buffer;
 
 import core.lifetime : emplace, forward, moveEmplace;
-import std.traits : hasElaborateDestructor, hasIndirections, isCopyable, Unqual;
+import std.traits : hasElaborateDestructor, hasIndirections, isCopyable, isNested, Unqual;
 
 private union StaticRingStorage(T, size_t Capacity)
 {
     static if (hasIndirections!T)
-        T[Capacity] gcShape;
+    {
+        static if (isNested!T)
+        {
+            // Embedding a nested T would make this storage aggregate inherit
+            // T's hidden context pointer. Use a conservative scan shape instead
+            // while issue #10 researches nested-element semantics separately.
+            void[T.sizeof * Capacity] conservativeGcShape;
+        }
+        else
+        {
+            // For ordinary element types, expose T's exact repeated pointer
+            // layout to the compiler-generated GC bitmap.
+            T[Capacity] gcShape;
+        }
+    }
 
     align(T.alignof) ubyte[T.sizeof * Capacity] bytes;
 }
@@ -1343,4 +1357,25 @@ unittest
     // indirections to the GC even though live T objects are managed manually.
     static assert(hasIndirections!(StaticRingBuffer!(Object, 1)));
     static assert(!hasIndirections!(StaticRingBuffer!(int, 1)));
+}
+
+unittest
+{
+    // A nested indirection-bearing element must not make the raw-storage
+    // overlay itself require an outer context. The fallback is deliberately
+    // conservative until issue #10 resolves nested-element semantics.
+    int outer;
+
+    struct NestedElement
+    {
+        int opCall()
+        {
+            return ++outer;
+        }
+    }
+
+    static assert(isNested!NestedElement);
+    static assert(hasIndirections!NestedElement);
+    static assert(__traits(compiles, StaticRingBuffer!(NestedElement, 2)()));
+    static assert(hasIndirections!(StaticRingBuffer!(NestedElement, 2)));
 }
