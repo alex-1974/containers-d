@@ -13,10 +13,11 @@ assuming that the fixed-capacity M2 result transfers to runtime capacity.
 Candidates:
 
 1. current tail-room baseline;
-2. direct runtime modulo;
-3. direct mask for power-of-two capacities;
-4. power-of-two detection performed in the measured operation;
-5. construction-time classification represented by stored
+2. overflow-safe add/carry detection plus one subtraction;
+3. direct runtime modulo;
+4. direct mask for power-of-two capacities;
+5. power-of-two detection performed in the measured operation;
+6. construction-time classification represented by stored
    `powerOfTwoCapacity` state and a per-operation branch.
 
 The benchmark is intentionally separate from production code.
@@ -51,11 +52,15 @@ Workflow:
 .github/workflows/perf-runtime-ring-buffer-wrap.yml
 ```
 
-Authoritative first measurement:
+Authoritative measurements:
 
 ```text
-head: 1fb691b9d9710ff9fc7ec4f893ac88e213a5838d
-workflow run: 36334801915
+stage A initial head: 1fb691b9d9710ff9fc7ec4f893ac88e213a5838d
+initial workflow run: 36334801915
+
+add/carry head: 13431ca9613954510f9b0a72dce6ea2f0d1ae03d
+add/carry workflow run: 36335171687
+
 runner: ubuntu-24.04
 ```
 
@@ -91,16 +96,18 @@ measurement.
 
 ## Results
 
-The counts are identical across the three capacities within each capacity
-class for a given compiler and strategy, so the tables show one representative
-capacity plus the observed relative result. The raw workflow artifacts retain
-all six capacities.
+Except for the add/carry candidate, counts are identical across the three
+capacities within each capacity class for a given compiler and strategy.
+Add/carry varies slightly with the generated branch distribution, so its table
+entry reports the measured range across all six capacities. The raw workflow
+artifacts retain every capacity.
 
 ### DMD 2.111.0
 
 | Strategy | Capacity class | Ir | Relative to tail-room |
 |---|---|---:|---:|
 | tail-room baseline | both | 12,607,524 | 1.000 |
+| overflow-safe add/carry | all six measured capacities | 10,932,250–11,087,898 | 0.867–0.879 |
 | runtime modulo | both | 9,461,790 | 0.751 |
 | detect each operation | non-power-of-two | 18,898,978 | 1.499 |
 | detect each operation | power-of-two | 16,801,826 | 1.333 |
@@ -110,6 +117,8 @@ all six capacities.
 
 Observations:
 
+- the overflow-safe add/carry form retires about **12.1–13.3% fewer
+  instructions** than the current tail-room form across the tested capacities;
 - direct runtime modulo retires about **25.0% fewer instructions** than the
   current tail-room form at every tested capacity;
 - direct mask and modulo are effectively instruction-identical for tested
@@ -125,6 +134,7 @@ Observations:
 | Strategy | Capacity class | Ir | Relative to tail-room |
 |---|---|---:|---:|
 | tail-room baseline | both | 12,623,896 | 1.000 |
+| overflow-safe add/carry | all six measured capacities | 14,295,066–14,532,634 | 1.132–1.151 |
 | runtime modulo | both | 13,668,376 | 1.083 |
 | detect each operation | non-power-of-two | 18,903,055 | 1.497 |
 | detect each operation | power-of-two | 14,704,655 | 1.165 |
@@ -134,6 +144,8 @@ Observations:
 
 Observations:
 
+- the overflow-safe add/carry form costs about **13.2–15.1% more retired
+  instructions** than the current tail-room form;
 - the current tail-room form beats direct runtime modulo by about **8.3%**;
 - an already-selected direct mask is about **33.2%** below the tail-room
   instruction count for power-of-two capacities;
@@ -150,7 +162,7 @@ Measured ordering:
 
 ```text
 DMD 2.111:
-    modulo ~= direct mask < tail-room
+    modulo ~= direct mask < overflow-safe add/carry < tail-room
     stored classification does not improve the power-of-two path enough
     to offset its generic-path cost
 
@@ -158,12 +170,42 @@ LDC 1.41:
     direct mask < stored classification < tail-room < modulo
     for power-of-two capacity
 
-    tail-room < modulo < stored classification
+    tail-room < modulo < overflow-safe add/carry < stored classification
     for non-power-of-two capacity
 ```
 
 Absolute DMD and LDC instruction counts are not used to rank the compilers.
 Only within-compiler candidate ordering is interpreted.
+
+## Overflow-safe add/carry candidate
+
+The measured add/carry candidate is:
+
+```d
+size_t index = head + logicalIndex;
+
+if (index < head || index >= capacity)
+    index -= capacity;
+
+return index;
+```
+
+The `index < head` predicate detects unsigned carry. Given the RingBuffer
+preconditions `head < capacity` and `logicalIndex < capacity`, the
+mathematical sum is strictly below `2 * capacity`, so at most one ring
+subtraction is required. If the machine addition wraps, unsigned subtraction
+by `capacity` still yields the same representable value as the mathematical
+`head + logicalIndex - capacity`.
+
+This candidate therefore preserves the full runtime-capacity wrap semantics
+without imposing a smaller public capacity domain.
+
+Measurement makes it a **DMD-only research candidate at this stage**:
+
+- DMD 2.111 improves by about 12.1–13.3% in retired instructions;
+- LDC 1.41 regresses by about 13.2–15.1%.
+
+It is not suitable as one shared implementation for both baseline compilers.
 
 ## Important semantic limit of the modulo probe
 
@@ -198,9 +240,13 @@ Both add large costs on at least one baseline compiler/capacity class.
 ### KEEP as research candidates
 
 - current tail-room baseline;
-- DMD runtime-modulo shape, subject to preserving overflow semantics;
+- overflow-safe add/carry for DMD, subject to whole-operation qualification;
+- DMD runtime-modulo shape as code-generation evidence only, still subject to
+  its overflow limitation;
 - LDC direct power-of-two mask, subject to finding a selection mechanism whose
   total cost remains worthwhile in real RingBuffer operations.
+
+No compiler-specific production path is admitted by stage A.
 
 ## Next stage
 
