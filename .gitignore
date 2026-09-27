@@ -14,4 +14,6 @@ dub.selections.json
 *.exe
 *.pdb
 
+/containers-d-test-library
+
 .workspace/

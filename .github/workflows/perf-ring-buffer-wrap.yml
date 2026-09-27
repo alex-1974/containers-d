@@ -1,0 +1,130 @@
+name: Ring Buffer Performance Probe
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - benchmarks/ring_buffer_wrap_probe.d
+      - .github/workflows/perf-ring-buffer-wrap.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  instruction-counts:
+    name: Wrap Ir / ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - dmd-2.111.0
+          - ldc-1.41.0
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ${{ matrix.compiler }}
+
+      - name: Install Callgrind
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y valgrind
+
+      - name: Build probe
+        shell: bash
+        run: |
+          mkdir -p build/perf
+
+          case "${{ matrix.compiler }}" in
+            dmd-*)
+              "$DC"                 -O                 -release                 -inline                 -boundscheck=off                 -of=build/perf/ring-buffer-wrap-probe                 benchmarks/ring_buffer_wrap_probe.d
+              ;;
+            ldc-*)
+              "$DC"                 -O3                 -release                 -boundscheck=off                 -of=build/perf/ring-buffer-wrap-probe                 benchmarks/ring_buffer_wrap_probe.d
+              ;;
+          esac
+
+          "$DC" --version
+
+      - name: Verify semantic equivalence
+        shell: bash
+        run: |
+          BIN=build/perf/ring-buffer-wrap-probe
+          ROUNDS=4096
+
+          branch1000=$("$BIN" branch-1000 "$ROUNDS" | awk '{print $2}')
+          modulo1000=$("$BIN" modulo-1000 "$ROUNDS" | awk '{print $2}')
+
+          branch1024=$("$BIN" branch-1024 "$ROUNDS" | awk '{print $2}')
+          modulo1024=$("$BIN" modulo-1024 "$ROUNDS" | awk '{print $2}')
+          mask1024=$("$BIN" mask-1024 "$ROUNDS" | awk '{print $2}')
+
+          echo "branch-1000: $branch1000"
+          echo "modulo-1000: $modulo1000"
+          echo "branch-1024: $branch1024"
+          echo "modulo-1024: $modulo1024"
+          echo "mask-1024: $mask1024"
+
+          test "$branch1000" = "$modulo1000"
+          test "$branch1024" = "$modulo1024"
+          test "$branch1024" = "$mask1024"
+
+      - name: Measure retired instructions
+        shell: bash
+        run: |
+          BIN=build/perf/ring-buffer-wrap-probe
+          ROUNDS=4096
+          RESULTS=build/perf/results.tsv
+
+          printf 'compiler\tvariant\tcapacity\toperations\tIr\tchecksum\n' > "$RESULTS"
+
+          measure() {
+            variant="$1"
+            capacity="$2"
+            symbol="$3"
+            out="build/perf/callgrind-${variant}.out"
+
+            checksum=$("$BIN" "$variant" "$ROUNDS" | awk '{print $2}')
+
+            valgrind               --tool=callgrind               --collect-atstart=no               --toggle-collect="$symbol"               --callgrind-out-file="$out"               "$BIN" "$variant" "$ROUNDS"               >/dev/null 2>&1
+
+            ir=$(awk '/^summary:/ {print $2}' "$out")
+
+            printf '%s\t%s\t%s\t%s\t%s\t%s\n'               "${{ matrix.compiler }}"               "$variant"               "$capacity"               "1048576"               "$ir"               "$checksum"               >> "$RESULTS"
+          }
+
+          measure branch-1000 1000 bench_branch_1000
+          measure modulo-1000 1000 bench_modulo_1000
+          measure branch-1024 1024 bench_branch_1024
+          measure modulo-1024 1024 bench_modulo_1024
+          measure mask-1024 1024 bench_mask_1024
+
+          cat "$RESULTS"
+
+          {
+            echo '### ${{ matrix.compiler }} — ring-buffer wrap instruction counts'
+            echo
+            echo '| Variant | Capacity | Operations | Ir | Ir/op |'
+            echo '|---|---:|---:|---:|---:|'
+            awk -F '\t' 'NR > 1 {
+              printf "| %s | %s | %s | %s | %.6f |\n", $2, $3, $4, $5, $5 / $4
+            }' "$RESULTS"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload probe evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: ring-buffer-wrap-${{ matrix.compiler }}
+          path: |
+            build/perf/results.tsv
+            build/perf/callgrind-*.out
+          if-no-files-found: error
