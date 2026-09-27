@@ -196,7 +196,7 @@ public:
     }
 
     package(containers) T* slotPointer(
-        size_t physicalIndex) scope return @safe @nogc nothrow
+        size_t physicalIndex) return scope @safe @nogc nothrow
     {
         assert(physicalIndex < _capacity);
 
@@ -205,7 +205,7 @@ public:
     }
 
     package(containers) const(T)* slotPointer(
-        size_t physicalIndex) const scope return @safe @nogc nothrow
+        size_t physicalIndex) const return scope @safe @nogc nothrow
     {
         assert(physicalIndex < _capacity);
 
@@ -216,7 +216,7 @@ public:
 
     package(containers) T[] slotSlice(
         size_t physicalStart,
-        size_t count) scope return @safe @nogc nothrow
+        size_t count) return scope @safe @nogc nothrow
     {
         if (count == 0)
             return null;
@@ -230,7 +230,7 @@ public:
 
     package(containers) const(T)[] slotSlice(
         size_t physicalStart,
-        size_t count) const scope return @safe @nogc nothrow
+        size_t count) const return scope @safe @nogc nothrow
     {
         if (count == 0)
             return null;
