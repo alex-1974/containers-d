@@ -62,9 +62,7 @@ Contract: `docs/design/runtime-ring-buffer-storage.md`.
 
 Evidence: `evidence/performance/runtime-ring-buffer-wraparound.md`.
 
-M3 is complete. The next milestone is deliberately not admitted here: choose
-between release preparation and the next container family using the normal
-issue/milestone planning process.
+M3 is complete.
 
 ## Release v0.1.0 — complete
 
@@ -78,6 +76,52 @@ issue/milestone planning process.
   `v0.1.0`.
 
 Tracking: issue #21.
+
+## M4 — Workspace buffer architecture research — current
+
+Tracking: issue #23.
+
+The next production container family is not preselected. M4 derives the next
+candidate from concrete consumers across DCanvas and the D geospatial workspace.
+
+Research consumers include:
+
+- `dcanvas-dev`: events, worker/network queues, stream buffers, editor
+  storage, render/frame staging and scratch memory;
+- `geo-d` / `geo3-d`: fixed-capacity expansion buffers, caller-owned
+  simplification workspaces and geometry scratch;
+- `osm-d`: zero-copy ranges, caller-owned StringTable/decompression
+  workspaces and planned per-worker buffer pooling;
+- `raster-d`: retained resource ownership, stable metadata storage, bounded
+  pipeline/backpressure and persistent-worker mailboxes;
+- `imagery-d`: RAM-budgeted source/cache/pipeline architecture;
+- `geodesy-d`, `quantities-d`, and `color-d`: mostly allocation-free
+  numerical paths that act as negative evidence against unnecessary generic
+  storage.
+
+Current candidate families include:
+
+- `StaticVector!(T, N)`;
+- `UniqueBuffer!T`;
+- `Vector!T` / `SmallVector!(T, N)`;
+- `ScratchBuffer!T` / Arena;
+- BufferPool / owned byte blocks;
+- SegmentedQueue / bounded BlockingQueue;
+- separately researched SPSC/MPSC structures.
+
+No candidate is admitted by this list alone.
+
+Exit gate:
+
+- workspace buffer architecture matrix complete;
+- generic versus domain-specific boundaries recorded;
+- concrete consumer contracts identified;
+- candidate research priority established;
+- the next implementation milestone admitted only with explicit correctness,
+  ownership, safety and benchmark gates.
+
+Research map:
+`docs/research/workspace-buffer-architecture.md`.
 
 ## Later candidates
 
