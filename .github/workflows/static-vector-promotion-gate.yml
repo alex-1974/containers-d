@@ -5,10 +5,12 @@ on:
     branches:
       - develop
     paths:
+      - source/containers/package.d
       - source/containers/static_vector.d
       - source/containers/internal/static_vector.d
       - source/containers/internal/inline_storage.d
       - source/containers/internal/element_lifetime.d
+      - tests/consumer/**
       - tests/static-vector-consumer/**
       - tests/static-vector-lifecycle/**
       - tests/static-vector-adversarial/**
@@ -180,3 +182,85 @@ jobs:
       - name: Release build
         shell: bash
         run: dub build --build=release --compiler="$DC" --force
+
+
+  package-boundary:
+    name: StaticVector package root / DMD 2.111.0
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install DMD
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: dmd-2.111.0
+          dub: 1.40.0
+
+      - name: Build exported archive
+        shell: bash
+        run: |
+          mkdir -p build/release-package
+          git archive HEAD | tar -xf - -C build/release-package
+
+          test -f build/release-package/source/containers/package.d
+          test -f build/release-package/source/containers/static_vector.d
+
+          for forbidden in \
+            .github docs evidence tests benchmarks \
+            AGENTS.md CONTRIBUTING.md ROADMAP.md RELEASING.md SECURITY.md
+          do
+            test ! -e "build/release-package/$forbidden"
+          done
+
+      - name: Test exported package
+        shell: bash
+        run: |
+          (
+            cd build/release-package
+            dub test --compiler="$DC" --force
+            dub build --build=release --compiler="$DC" --force
+          )
+
+      - name: Consume package-root StaticVector from archive
+        shell: bash
+        run: |
+          mkdir -p build/archive-consumer/source
+
+          cat > build/archive-consumer/dub.sdl <<'EOF'
+          name "containers-d-static-vector-archive-consumer"
+          targetType "executable"
+          dependency "containers-d" path="../release-package"
+          EOF
+
+          cat > build/archive-consumer/source/app.d <<'EOF'
+          import containers :
+              RingBuffer,
+              StaticRingBuffer,
+              StaticVector;
+
+          void main() @safe @nogc nothrow
+          {
+              StaticVector!(int, 3) vector;
+              vector.pushBack(1);
+              vector.pushBack(2);
+              assert(vector[] == [1, 2]);
+
+              StaticRingBuffer!(int, 2) fixed;
+              assert(fixed.tryPushBack(3));
+
+              auto runtime = RingBuffer!int(2);
+              assert(runtime.tryPushBack(4));
+
+              assert(
+                  vector.back +
+                  fixed.front +
+                  runtime.front == 9);
+          }
+          EOF
+
+          dub run \
+            --root=build/archive-consumer \
+            --compiler="$DC" \
+            --force
