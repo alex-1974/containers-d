@@ -49,9 +49,83 @@ if (Capacity > 0)
     enum size_t capacity = Capacity;
 
 private:
-    // Generate the inline storage state/accessors in this aggregate. This is
-    // performance-significant on DMD 2.111; see the M4.3 expansion probe.
-    mixin InlineRawStorageOps!(T, Capacity);
+    /*
+     * Scalar T does not need explicit raw-lifetime machinery. Keep the ordinary
+     * static-array representation so common numeric/pointer specializations
+     * compile as cheaply as the consumer-local baseline.
+     *
+     * Non-scalar T retains the audited M4.2 raw-storage/lifetime path.
+     */
+    enum bool useDirectScalarStorage =
+        __traits(isScalar, T);
+
+    static if (useDirectScalarStorage)
+    {
+        T[Capacity] _directData;
+
+        pragma(inline, true)
+        T* slotPointer(size_t physicalIndex)
+            return scope pure nothrow @safe @nogc
+        {
+            assert(physicalIndex < Capacity);
+            return &_directData[physicalIndex];
+        }
+
+        pragma(inline, true)
+        const(T)* slotPointer(size_t physicalIndex)
+            const return scope pure nothrow @safe @nogc
+        {
+            assert(physicalIndex < Capacity);
+            return &_directData[physicalIndex];
+        }
+
+        pragma(inline, true)
+        T[] slotSlice(size_t physicalStart, size_t count)
+            return scope pure nothrow @safe @nogc
+        {
+            if (count == 0)
+                return null;
+
+            assert(physicalStart < Capacity);
+            assert(count <= Capacity - physicalStart);
+
+            return _directData[
+                physicalStart ..
+                physicalStart + count];
+        }
+
+        pragma(inline, true)
+        const(T)[] slotSlice(size_t physicalStart, size_t count)
+            const return scope pure nothrow @safe @nogc
+        {
+            if (count == 0)
+                return null;
+
+            assert(physicalStart < Capacity);
+            assert(count <= Capacity - physicalStart);
+
+            return _directData[
+                physicalStart ..
+                physicalStart + count];
+        }
+
+        pragma(inline, true)
+        void clearVacatedSlot(size_t physicalIndex)
+            pure nothrow @safe @nogc
+        {
+            assert(physicalIndex < Capacity);
+
+            static if (elementHasIndirections!T)
+                _directData[physicalIndex] = T.init;
+        }
+    }
+    else
+    {
+        // Non-scalar storage requires explicit lifetime and GC/alignment
+        // handling. Generate the qualified storage operations in this
+        // aggregate so DMD 2.111 can inline the hot accessors.
+        mixin InlineRawStorageOps!(T, Capacity);
+    }
 
     size_t _length;
 
