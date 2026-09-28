@@ -1,0 +1,5 @@
+name "containers-d-static-vector-nontrivial-assign-negative"
+description "StaticVector nontrivial identity assignment remains disabled"
+targetType "executable"
+
+dependency "containers-d" path="../../../"

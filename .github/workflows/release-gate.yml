@@ -74,6 +74,18 @@ jobs:
         shell: bash
         run: DFLAGS="-preview=dip1000" dub run --root=tests/consumer --compiler="$DC" --force
 
+      - name: StaticVector lifecycle qualification
+        shell: bash
+        run: dub run --root=tests/static-vector-lifecycle --compiler="$DC" --force
+
+      - name: StaticVector adversarial reference model
+        shell: bash
+        run: dub run --root=tests/static-vector-adversarial --compiler="$DC" --force
+
+      - name: StaticVector GC reachability
+        shell: bash
+        run: dub run --root=tests/static-vector-gc --compiler="$DC" --force
+
       - name: Runtime GC reachability
         shell: bash
         run: dub run --root=tests/gc-reachability --compiler="$DC" --force
@@ -83,13 +95,31 @@ jobs:
         run: |
           for root in \
             tests/compile-negative/segment-escape \
-            tests/compile-negative/runtime-segment-escape
+            tests/compile-negative/runtime-segment-escape \
+            tests/compile-negative/static-vector-slice-escape \
+            tests/compile-negative/static-vector-ref-escape
           do
             if DFLAGS="-preview=dip1000" dub build \
                 --root="$root" \
                 --compiler="$DC" \
                 --force; then
-              echo "Expected borrowed segment escape to fail under DIP1000: $root"
+              echo "Expected borrowed storage escape to fail under DIP1000: $root"
+              false
+            fi
+          done
+
+      - name: StaticVector transfer negative compile
+        shell: bash
+        run: |
+          for root in \
+            tests/compile-negative/static-vector-move-only-copy \
+            tests/compile-negative/static-vector-nontrivial-assign
+          do
+            if dub build \
+                --root="$root" \
+                --compiler="$DC" \
+                --force; then
+              echo "Expected invalid StaticVector transfer to fail: $root"
               false
             fi
           done
@@ -172,10 +202,14 @@ jobs:
           EOF
 
           cat > build/archive-consumer/source/app.d <<'EOF'
-          import containers : RingBuffer, StaticRingBuffer;
+          import containers : RingBuffer, StaticRingBuffer, StaticVector;
 
           void main() @safe @nogc nothrow
           {
+              StaticVector!(int, 2) vector;
+              vector.pushBack(7);
+              assert(vector[] == [7]);
+
               StaticRingBuffer!(int, 2) fixed;
               assert(fixed.tryPushBack(1));
 
@@ -231,6 +265,18 @@ jobs:
       - name: External consumer smoke
         shell: bash
         run: dub run --root=tests/consumer --compiler="$DC" --force
+
+      - name: StaticVector lifecycle qualification
+        shell: bash
+        run: dub run --root=tests/static-vector-lifecycle --compiler="$DC" --force
+
+      - name: StaticVector adversarial reference model
+        shell: bash
+        run: dub run --root=tests/static-vector-adversarial --compiler="$DC" --force
+
+      - name: StaticVector GC reachability
+        shell: bash
+        run: dub run --root=tests/static-vector-gc --compiler="$DC" --force
 
       - name: Runtime GC reachability
         shell: bash

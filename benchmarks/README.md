@@ -46,3 +46,30 @@ shared GitHub runners are intentionally not used as performance evidence.
 
 The two variants for capacity 1000 must produce the same checksum. All three
 variants for capacity 1024 must produce the same checksum.
+
+
+# Element-lifetime placement-move probe
+
+M4.2 also contains `element_lifetime_move_probe.d`.
+
+It compares the historical direct placement-new helper with the shared
+`PlacementMoveOps!T` typed template mixin for a move-only element type.
+
+The probe exists because DMD 2.111 showed a measurable cross-module call cost
+for equivalent imported helper/function-template experiments, while LDC 1.41
+inlined them.
+
+Each variant performs 1,048,576 placement moves under Callgrind.
+
+Qualified M4.2 result:
+
+| Compiler | Direct Ir | Mixed helper Ir | Delta |
+|---|---:|---:|---:|
+| DMD 2.111 | 40,894,475 | 40,894,475 | 0.000000% |
+| LDC 1.41 | 13,107,232 | 13,107,232 | 0.000000% |
+
+The semantic-equivalence gate also requires identical checksums.
+
+This benchmark is specifically evidence for the placement-move factoring. The
+existing ring wrap/operation probes remain separate tests for their respective
+hot paths.

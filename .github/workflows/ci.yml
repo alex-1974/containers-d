@@ -64,17 +64,77 @@ jobs:
         shell: bash
         run: DFLAGS="-preview=dip1000" dub run --root=tests/consumer --compiler="$DC" --force
 
+
+      - name: StaticVector research consumer
+        shell: bash
+        run: dub run --root=tests/research-static-vector-consumer --compiler="$DC" --force
+
+      - name: StaticVector research consumer with DIP1000
+        shell: bash
+        run: DFLAGS="-preview=dip1000" dub run --root=tests/research-static-vector-consumer --compiler="$DC" --force
+
+      - name: StaticVector promotion consumer
+        shell: bash
+        run: dub run --root=tests/static-vector-consumer --compiler="$DC" --force
+
+      - name: StaticVector promotion consumer with DIP1000
+        shell: bash
+        run: DFLAGS="-preview=dip1000" dub run --root=tests/static-vector-consumer --compiler="$DC" --force
+
+      - name: StaticVector lifecycle qualification
+        shell: bash
+        run: dub run --root=tests/static-vector-lifecycle --compiler="$DC" --force
+
+
+      - name: StaticVector adversarial reference model
+        shell: bash
+        run: dub run --root=tests/static-vector-adversarial --compiler="$DC" --force
+
+      - name: StaticVector GC reachability
+        shell: bash
+        run: dub run --root=tests/static-vector-gc --compiler="$DC" --force
+
+
+
       - name: Runtime GC reachability
         shell: bash
         run: dub run --root=tests/gc-reachability --compiler="$DC" --force
 
+
+      - name: Inline storage GC reachability
+        shell: bash
+        run: dub run --root=tests/inline-storage-gc --compiler="$DC" --force
+
       - name: DIP1000 borrowed-slice negative compile
         shell: bash
         run: |
-          for root in             tests/compile-negative/segment-escape             tests/compile-negative/runtime-segment-escape
+          for root in \
+            tests/compile-negative/segment-escape \
+            tests/compile-negative/runtime-segment-escape \
+            tests/compile-negative/static-vector-slice-escape \
+            tests/compile-negative/static-vector-ref-escape
           do
-            if DFLAGS="-preview=dip1000" dub build                 --root="$root"                 --compiler="$DC"                 --force; then
-              echo "Expected borrowed segment escape to fail under DIP1000: $root"
+            if DFLAGS="-preview=dip1000" dub build \
+                --root="$root" \
+                --compiler="$DC" \
+                --force; then
+              echo "Expected borrowed storage escape to fail under DIP1000: $root"
+              false
+            fi
+          done
+
+      - name: StaticVector transfer negative compile
+        shell: bash
+        run: |
+          for root in \
+            tests/compile-negative/static-vector-move-only-copy \
+            tests/compile-negative/static-vector-nontrivial-assign
+          do
+            if dub build \
+                --root="$root" \
+                --compiler="$DC" \
+                --force; then
+              echo "Expected invalid StaticVector transfer to fail: $root"
               false
             fi
           done

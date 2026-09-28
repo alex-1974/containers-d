@@ -1,0 +1,5 @@
+name "containers-d-static-vector-research-consumer"
+description "External consumer smoke for the M4.3 StaticVector research surface"
+targetType "executable"
+
+dependency "containers-d" path="../../"

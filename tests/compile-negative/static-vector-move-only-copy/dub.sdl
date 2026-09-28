@@ -1,0 +1,5 @@
+name "containers-d-static-vector-move-only-copy-negative"
+description "StaticVector must reject copying move-only elements"
+targetType "executable"
+
+dependency "containers-d" path="../../../"

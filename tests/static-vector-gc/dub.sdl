@@ -1,0 +1,5 @@
+name "containers-d-static-vector-gc"
+description "GC reachability integration test for StaticVector"
+targetType "executable"
+
+dependency "containers-d" path="../../"

@@ -1,0 +1,5 @@
+name "containers-d-inline-storage-gc"
+description "GC reachability integration test for over-aligned InlineRawStorage"
+targetType "executable"
+
+dependency "containers-d" path="../../"
