@@ -64,7 +64,7 @@ private:
         hasElaborateMove!T ||
         hasLanguageMoveConstructor!T;
 
-    void endLiveSlot(size_t physicalIndex)()
+    void endLiveSlot()(size_t physicalIndex)
     {
         static if (elementNeedsDestruction!T)
             endElementLifetime(_storage.slotPointer(physicalIndex));
@@ -181,12 +181,13 @@ public:
     }
 
     bool tryPushBack(U)(auto ref U value)
-    if (__traits(compiles, pushBack(value)))
+    if (is(Unqual!U == T) &&
+        __traits(compiles, emplace(cast(T*) null, forward!value)))
     {
         if (full)
             return false;
 
-        pushBack(value);
+        pushBack(forward!value);
         return true;
     }
 
@@ -195,7 +196,7 @@ public:
         assert(!empty);
 
         --_length;
-        endLiveSlot(_length);
+        endLiveSlot!()(_length);
     }
 
     void clear()()
@@ -206,7 +207,7 @@ public:
             while (_length != 0)
             {
                 --_length;
-                endLiveSlot(_length);
+                endLiveSlot!()(_length);
             }
         }
         else
