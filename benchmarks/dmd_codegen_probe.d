@@ -130,6 +130,58 @@ extern(C) ulong bench_unrolled_pointer4(
 }
 
 pragma(inline, false)
+extern(C) ulong bench_size_pointer4(
+    const(ulong)* base, const(size_t)* indices,
+    size_t rounds) @system @nogc nothrow
+{
+    ulong checksum;
+    size_t round;
+    while (round < rounds)
+    {
+        auto cursor = indices;
+        const end = indices + indexCount;
+        while (cursor != end)
+        {
+            checksum += base[cursor[0]];
+            checksum += base[cursor[1]];
+            checksum += base[cursor[2]];
+            checksum += base[cursor[3]];
+            cursor += 4;
+        }
+        ++round;
+    }
+    return checksum;
+}
+
+pragma(inline, false)
+extern(C) ulong bench_size_pointer8(
+    const(ulong)* base, const(size_t)* indices,
+    size_t rounds) @system @nogc nothrow
+{
+    ulong checksum;
+    size_t round;
+    while (round < rounds)
+    {
+        auto cursor = indices;
+        const end = indices + indexCount;
+        while (cursor != end)
+        {
+            checksum += base[cursor[0]];
+            checksum += base[cursor[1]];
+            checksum += base[cursor[2]];
+            checksum += base[cursor[3]];
+            checksum += base[cursor[4]];
+            checksum += base[cursor[5]];
+            checksum += base[cursor[6]];
+            checksum += base[cursor[7]];
+            cursor += 8;
+        }
+        ++round;
+    }
+    return checksum;
+}
+
+pragma(inline, false)
 extern(C) ulong bench_size_indices(
     const(ulong)* base, const(size_t)* indices,
     size_t rounds) @system @nogc nothrow
@@ -222,7 +274,8 @@ void main(string[] args)
         stderr.writeln(
             "usage: dmd-codegen-probe " ~
             "<foreach-struct|while-struct|while-scalar|pointer-indices|" ~
-            "unrolled-pointer4|size-indices|size-unrolled4|" ~
+            "unrolled-pointer4|size-pointer4|size-pointer8|" ~
+            "size-indices|size-unrolled4|" ~
             "fixed-count|unrolled4> <rounds>");
         return;
     }
@@ -261,6 +314,14 @@ void main(string[] args)
         case "unrolled-pointer4":
             checksum = bench_unrolled_pointer4(
                 scalarBase, indices.ptr, rounds);
+            break;
+        case "size-pointer4":
+            checksum = bench_size_pointer4(
+                scalarBase, sizeIndices.ptr, rounds);
+            break;
+        case "size-pointer8":
+            checksum = bench_size_pointer8(
+                scalarBase, sizeIndices.ptr, rounds);
             break;
         case "size-indices":
             checksum = bench_size_indices(
