@@ -68,7 +68,7 @@ jobs:
           ROUNDS=64
           reference=""
 
-          for variant in foreach-struct while-struct while-scalar pointer-indices unrolled-pointer4 size-indices size-unrolled4 fixed-count unrolled4
+          for variant in foreach-struct while-struct while-scalar pointer-indices unrolled-pointer4 size-pointer4 size-pointer8 size-indices size-unrolled4 fixed-count unrolled4
           do
             d_checksum=$("$D" "$variant" "$ROUNDS" | awk '{print $2}')
             cpp_checksum=$("$CPP" "$variant" "$ROUNDS" | awk '{print $2}')
@@ -108,7 +108,7 @@ jobs:
             printf '%s\t%s\t%s\t%s\t%s\n'               "$toolchain" "$variant" "$OPERATIONS" "$ir" "$checksum" >> "$RESULTS"
           }
 
-          for variant in foreach-struct while-struct while-scalar pointer-indices unrolled-pointer4 size-indices size-unrolled4 fixed-count unrolled4
+          for variant in foreach-struct while-struct while-scalar pointer-indices unrolled-pointer4 size-pointer4 size-pointer8 size-indices size-unrolled4 fixed-count unrolled4
           do
             measure d "$D" "$variant"
             measure cpp "$CPP" "$variant"
@@ -132,7 +132,7 @@ jobs:
           D=build/dmd-codegen/d-probe
           CPP=build/dmd-codegen/cpp-probe
 
-          for symbol in bench_foreach_struct bench_while_struct bench_while_scalar bench_pointer_indices bench_unrolled_pointer4 bench_size_indices bench_size_unrolled4 bench_fixed_count bench_unrolled4
+          for symbol in bench_foreach_struct bench_while_struct bench_while_scalar bench_pointer_indices bench_unrolled_pointer4 bench_size_pointer4 bench_size_pointer8 bench_size_indices bench_size_unrolled4 bench_fixed_count bench_unrolled4
           do
             objdump -d -M intel --disassemble="$symbol" "$D"               > "build/dmd-codegen/d-${symbol}.asm"
             objdump -d -M intel --disassemble="$symbol" "$CPP"               > "build/dmd-codegen/cpp-${symbol}.asm"
