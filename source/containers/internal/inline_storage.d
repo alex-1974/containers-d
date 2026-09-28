@@ -112,8 +112,9 @@ private:
             align(T.alignof) InlinePayload _payload = void;
     }
 
+    pragma(inline, true)
     size_t slotBaseOffset() const
-        pure @safe @nogc nothrow
+        pure @trusted @nogc nothrow
     {
         static if (!needsDynamicAlignment)
         {
@@ -121,8 +122,8 @@ private:
         }
         else
         {
-            const address = (() @trusted =>
-                cast(size_t) _payload.bytes.ptr)();
+            const address =
+                cast(size_t) _payload.bytes.ptr;
 
             const mask = T.alignof - 1;
             const misalignment = address & mask;
@@ -132,8 +133,9 @@ private:
     }
 
 package(containers):
+    pragma(inline, true)
     T* slotPointer(size_t physicalIndex)
-        return scope pure @safe @nogc nothrow
+        return scope pure @trusted @nogc nothrow
     {
         assert(physicalIndex < Capacity);
 
@@ -142,12 +144,12 @@ package(containers):
 
         assert(begin <= _payload.bytes.length - T.sizeof);
 
-        return (() @trusted =>
-            cast(T*) (_payload.bytes.ptr + begin))();
+        return cast(T*) (_payload.bytes.ptr + begin);
     }
 
+    pragma(inline, true)
     const(T)* slotPointer(size_t physicalIndex)
-        const return scope pure @safe @nogc nothrow
+        const return scope pure @trusted @nogc nothrow
     {
         assert(physicalIndex < Capacity);
 
@@ -156,12 +158,12 @@ package(containers):
 
         assert(begin <= _payload.bytes.length - T.sizeof);
 
-        return (() @trusted =>
-            cast(const(T)*) (_payload.bytes.ptr + begin))();
+        return cast(const(T)*) (_payload.bytes.ptr + begin);
     }
 
+    pragma(inline, true)
     T[] slotSlice(size_t physicalStart, size_t count)
-        return scope pure @safe @nogc nothrow
+        return scope pure @trusted @nogc nothrow
     {
         if (count == 0)
             return null;
@@ -169,12 +171,12 @@ package(containers):
         assert(physicalStart < Capacity);
         assert(count <= Capacity - physicalStart);
 
-        return (() @trusted =>
-            slotPointer(physicalStart)[0 .. count])();
+        return slotPointer(physicalStart)[0 .. count];
     }
 
+    pragma(inline, true)
     const(T)[] slotSlice(size_t physicalStart, size_t count)
-        const return scope pure @safe @nogc nothrow
+        const return scope pure @trusted @nogc nothrow
     {
         if (count == 0)
             return null;
@@ -182,10 +184,10 @@ package(containers):
         assert(physicalStart < Capacity);
         assert(count <= Capacity - physicalStart);
 
-        return (() @trusted =>
-            slotPointer(physicalStart)[0 .. count])();
+        return slotPointer(physicalStart)[0 .. count];
     }
 
+    pragma(inline, true)
     void clearVacatedSlot(size_t physicalIndex)
         pure @safe @nogc nothrow
     {
