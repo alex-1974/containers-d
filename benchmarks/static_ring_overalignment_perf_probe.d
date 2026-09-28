@@ -61,7 +61,8 @@ private void initialize(Ring, Value)(
     foreach (i; 0 .. capacity)
     {
         auto value = Value(values[i]);
-        assert(ring.tryPushBack(value));
+        const pushed = ring.tryPushBack(value);
+        assert(pushed);
     }
 }
 
