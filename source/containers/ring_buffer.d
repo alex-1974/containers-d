@@ -11,10 +11,12 @@
 module containers.ring_buffer;
 
 import containers.internal.element_lifetime :
+    CopyEmplaceOps,
     EndElementLifetimeOps,
     PlacementMoveOps,
     sharedElementCopyConstructible = elementCopyConstructible;
 import containers.internal.target_capabilities :
+    preferLocalSimpleCopyConstruction,
     qualifiedInlineEmbeddedAlignment;
 import core.lifetime : emplace, forward, moveEmplace;
 import std.traits : hasIndirections, isNested, Unqual;
@@ -221,6 +223,7 @@ struct StaticRingBuffer(T, size_t Capacity)
 
 private:
     mixin PlacementMoveOps!T;
+    mixin CopyEmplaceOps!(T, preferLocalSimpleCopyConstruction);
     mixin EndElementLifetimeOps!T;
 
     // Compiler/target-qualified representation. The public container contract
@@ -663,6 +666,10 @@ public:
             !__traits(isRef, value))
         {
             placementMoveConstruct(slotPointer(insertionIndex), value);
+        }
+        else static if (is(U == T) && __traits(isRef, value))
+        {
+            copyEmplaceConstruct(slotPointer(insertionIndex), value);
         }
         else
         {
