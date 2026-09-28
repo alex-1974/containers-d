@@ -96,7 +96,8 @@ package(containers) mixin template EndElementLifetimeOps(
  */
 package(containers) mixin template CopyEmplaceOps(
     T,
-    bool PreferLocalSimpleCopy)
+    bool PreferLocalSimpleCopy,
+    alias CopyPrimitive = copyEmplace)
 {
     private static T* copyEmplaceConstruct(
         T* target,
@@ -115,7 +116,7 @@ package(containers) mixin template CopyEmplaceOps(
         }
         else
         {
-            copyEmplace(source, *target);
+            CopyPrimitive(source, *target);
         }
 
         return target;
