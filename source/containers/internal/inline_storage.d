@@ -111,7 +111,7 @@ private:
             align(T.alignof) Payload _payload = void;
     }
 
-    size_t slotBaseOffset() const @safe @nogc nothrow
+    size_t slotBaseOffset() const pure @safe @nogc nothrow
     {
         static if (!needsDynamicAlignment)
         {
@@ -131,7 +131,7 @@ private:
 
 package(containers):
     T* slotPointer(size_t physicalIndex)
-        return scope @safe @nogc nothrow
+        return scope pure @safe @nogc nothrow
     {
         assert(physicalIndex < Capacity);
 
@@ -145,7 +145,7 @@ package(containers):
     }
 
     const(T)* slotPointer(size_t physicalIndex)
-        const return scope @safe @nogc nothrow
+        const return scope pure @safe @nogc nothrow
     {
         assert(physicalIndex < Capacity);
 
@@ -159,7 +159,7 @@ package(containers):
     }
 
     T[] slotSlice(size_t physicalStart, size_t count)
-        return scope @safe @nogc nothrow
+        return scope pure @safe @nogc nothrow
     {
         if (count == 0)
             return null;
@@ -172,7 +172,7 @@ package(containers):
     }
 
     const(T)[] slotSlice(size_t physicalStart, size_t count)
-        const return scope @safe @nogc nothrow
+        const return scope pure @safe @nogc nothrow
     {
         if (count == 0)
             return null;
@@ -191,7 +191,7 @@ package(containers):
      * needs no writes.
      */
     void clearVacatedSlot(size_t physicalIndex)
-        @safe @nogc nothrow
+        pure @safe @nogc nothrow
     {
         assert(physicalIndex < Capacity);
 
