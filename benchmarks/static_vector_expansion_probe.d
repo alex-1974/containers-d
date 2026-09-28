@@ -155,13 +155,22 @@ if (Capacity > 0)
 
         static foreach (i; 0 .. Capacity)
         {
+            const bits =
+                mixDouble(buffer[i]);
+
+            // FNV-style rolling fold with both round and component position.
+            // Unlike the earlier symmetric XOR-only fold, this does not cancel
+            // back to zero merely because the input period divides the chosen
+            // benchmark round count.
             checksum ^=
-                mixDouble(buffer[i]) +
-                (cast(ulong) i + 1) *
-                0x9E37_79B9_7F4A_7C15UL;
-            checksum =
-                (checksum << 9) |
-                (checksum >> (ulong.sizeof * 8 - 9));
+                bits ^
+                ((cast(ulong) round + 1) *
+                    0x9E37_79B9_7F4A_7C15UL) ^
+                ((cast(ulong) i + 1) *
+                    0xD6E8_FEB8_6659_FD93UL);
+
+            checksum *=
+                0x0000_0100_0000_01B3UL;
         }
     }
 
