@@ -1,0 +1,155 @@
+name: Element Lifetime Move Probe
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - benchmarks/element_lifetime_move_probe.d
+      - source/containers/internal/element_lifetime.d
+      - source/containers/runtime_ring_buffer.d
+      - source/containers/ring_buffer.d
+      - .github/workflows/perf-element-lifetime-move.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  instruction-counts:
+    name: Placement Move Ir / ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - dmd-2.111.0
+          - ldc-1.41.0
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ${{ matrix.compiler }}
+
+      - name: Install Callgrind
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y valgrind
+
+      - name: Build probe
+        shell: bash
+        run: |
+          mkdir -p build/perf-element-move
+
+          case "${{ matrix.compiler }}" in
+            dmd-*)
+              "$DC" \
+                -O \
+                -release \
+                -inline \
+                -boundscheck=off \
+                -Isource \
+                -of=build/perf-element-move/element-lifetime-move-probe \
+                benchmarks/element_lifetime_move_probe.d \
+                source/containers/internal/element_lifetime.d
+              ;;
+            ldc-*)
+              "$DC" \
+                -O3 \
+                -release \
+                -boundscheck=off \
+                -Isource \
+                -of=build/perf-element-move/element-lifetime-move-probe \
+                benchmarks/element_lifetime_move_probe.d \
+                source/containers/internal/element_lifetime.d
+              ;;
+          esac
+
+          "$DC" --version
+
+      - name: Verify semantic equivalence
+        shell: bash
+        run: |
+          BIN=build/perf-element-move/element-lifetime-move-probe
+          ROUNDS=4096
+
+          direct=$("$BIN" direct "$ROUNDS" | awk '{print $2}')
+          shared=$("$BIN" shared "$ROUNDS" | awk '{print $2}')
+
+          echo "direct=$direct shared=$shared"
+          test "$direct" = "$shared"
+
+      - name: Measure retired instructions
+        shell: bash
+        run: |
+          BIN=build/perf-element-move/element-lifetime-move-probe
+          ROUNDS=1048576
+          RESULTS=build/perf-element-move/results.tsv
+
+          printf 'compiler\tvariant\toperations\tIr\tchecksum\n' > "$RESULTS"
+
+          measure() {
+            variant="$1"
+            symbol="bench_${variant}"
+            out="build/perf-element-move/callgrind-${variant}.out"
+
+            checksum=$("$BIN" "$variant" "$ROUNDS" | awk '{print $2}')
+
+            valgrind \
+              --tool=callgrind \
+              --collect-atstart=no \
+              --toggle-collect="$symbol" \
+              --callgrind-out-file="$out" \
+              "$BIN" "$variant" "$ROUNDS" \
+              >/dev/null 2>&1
+
+            ir=$(awk '/^summary:/ {print $2}' "$out")
+
+            printf '%s\t%s\t%s\t%s\t%s\n' \
+              "${{ matrix.compiler }}" \
+              "$variant" \
+              "$ROUNDS" \
+              "$ir" \
+              "$checksum" \
+              >> "$RESULTS"
+          }
+
+          measure direct
+          measure shared
+
+          cat "$RESULTS"
+
+          direct_ir=$(awk -F '\t' '$2 == "direct" {print $4}' "$RESULTS")
+          shared_ir=$(awk -F '\t' '$2 == "shared" {print $4}' "$RESULTS")
+
+          awk -v direct="$direct_ir" -v shared="$shared_ir" 'BEGIN {
+            delta = shared - direct;
+            pct = direct == 0 ? 0 : (delta * 100.0 / direct);
+            printf "direct Ir=%d shared Ir=%d delta=%d (%+.6f%%)\n",
+              direct, shared, delta, pct;
+          }'
+
+          {
+            echo '### ${{ matrix.compiler }} — placement move counts'
+            echo
+            echo '| Variant | Operations | Ir | Ir/op |'
+            echo '|---|---:|---:|---:|'
+            awk -F '\t' 'NR > 1 {
+              printf "| %s | %s | %s | %.6f |\n", $2, $3, $4, $4 / $3
+            }' "$RESULTS"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload probe evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: element-lifetime-move-${{ matrix.compiler }}
+          path: |
+            build/perf-element-move/results.tsv
+            build/perf-element-move/callgrind-*.out
+          if-no-files-found: error

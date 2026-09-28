@@ -1,0 +1,233 @@
+name: Static Ring Over-Alignment Performance Probe
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - benchmarks/static_ring_overalignment_perf_probe.d
+      - benchmarks/static_ring_overalignment_perf_reference.cpp
+      - source/containers/package.d
+      - source/containers/ring_buffer.d
+      - source/containers/internal/element_lifetime.d
+      - source/containers/internal/target_capabilities.d
+      - .github/workflows/perf-static-ring-overalignment.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-ring-overalignment-perf-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  instruction-counts:
+    name: Ring Ir / ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: DMD 2.111.0 / Linux x86_64
+            id: dmd-2.111.0-linux-x86_64
+            os: ubuntu-24.04
+            compiler: dmd-2.111.0
+          - name: DMD 2.112.1 / Linux x86_64
+            id: dmd-2.112.1-linux-x86_64
+            os: ubuntu-24.04
+            compiler: dmd-2.112.1
+          - name: DMD 2.113.0 / Linux x86_64
+            id: dmd-2.113.0-linux-x86_64
+            os: ubuntu-24.04
+            compiler: dmd-2.113.0
+          - name: LDC 1.41.0 / Linux x86_64
+            id: ldc-1.41.0-linux-x86_64
+            os: ubuntu-24.04
+            compiler: ldc-1.41.0
+          - name: LDC 1.42.0 / Linux x86_64
+            id: ldc-1.42.0-linux-x86_64
+            os: ubuntu-24.04
+            compiler: ldc-1.42.0
+          - name: LDC 1.43.0 / Linux x86_64
+            id: ldc-1.43.0-linux-x86_64
+            os: ubuntu-24.04
+            compiler: ldc-1.43.0
+          - name: LDC 1.41.0 / Linux AArch64
+            id: ldc-1.41.0-linux-aarch64
+            os: ubuntu-24.04-arm
+            compiler: ldc-1.41.0
+          - name: LDC 1.43.0 / Linux AArch64
+            id: ldc-1.43.0-linux-aarch64
+            os: ubuntu-24.04-arm
+            compiler: ldc-1.43.0
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ${{ matrix.compiler }}
+
+      - name: Install Callgrind
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y valgrind
+
+      - name: Toolchain information
+        shell: bash
+        run: |
+          echo "RUNNER_OS=$RUNNER_OS"
+          echo "RUNNER_ARCH=$RUNNER_ARCH"
+          uname -a || true
+          echo "DC=$DC"
+          "$DC" --version
+          clang++ --version
+          valgrind --version
+
+      - name: Build D and C++ probes
+        shell: bash
+        run: |
+          mkdir -p build/perf-static-ring-overalignment
+
+          case "${{ matrix.compiler }}" in
+            dmd-*)
+              "$DC" \
+                -O \
+                -release \
+                -inline \
+                -boundscheck=off \
+                -Isource \
+                -of=build/perf-static-ring-overalignment/d-probe \
+                benchmarks/static_ring_overalignment_perf_probe.d \
+                source/containers/package.d \
+                source/containers/ring_buffer.d \
+                source/containers/internal/element_lifetime.d \
+                source/containers/internal/target_capabilities.d
+              ;;
+            ldc-*)
+              "$DC" \
+                -O3 \
+                -release \
+                -boundscheck=off \
+                -Isource \
+                -of=build/perf-static-ring-overalignment/d-probe \
+                benchmarks/static_ring_overalignment_perf_probe.d \
+                source/containers/package.d \
+                source/containers/ring_buffer.d \
+                source/containers/internal/element_lifetime.d \
+                source/containers/internal/target_capabilities.d
+              ;;
+          esac
+
+          clang++ \
+            -std=c++20 \
+            -O3 \
+            -DNDEBUG \
+            -fno-exceptions \
+            -fno-rtti \
+            benchmarks/static_ring_overalignment_perf_reference.cpp \
+            -o build/perf-static-ring-overalignment/cpp-probe
+
+      - name: Verify semantic equivalence
+        shell: bash
+        run: |
+          D=build/perf-static-ring-overalignment/d-probe
+          CPP=build/perf-static-ring-overalignment/cpp-probe
+          ROUNDS=4096
+
+          d_model=$("$D" model "$ROUNDS" | awk '{print $2}')
+          d_normal=$("$D" normal "$ROUNDS" | awk '{print $2}')
+          d_over=$("$D" over "$ROUNDS" | awk '{print $2}')
+          cpp_normal=$("$CPP" normal "$ROUNDS" | awk '{print $2}')
+          cpp_native=$("$CPP" native "$ROUNDS" | awk '{print $2}')
+          cpp_dynamic=$("$CPP" dynamic "$ROUNDS" | awk '{print $2}')
+
+          printf 'd_model=%s d_normal=%s d_over=%s cpp_normal=%s cpp_native=%s cpp_dynamic=%s\n' \
+            "$d_model" "$d_normal" "$d_over" \
+            "$cpp_normal" "$cpp_native" "$cpp_dynamic"
+
+          test "$d_model" = "$cpp_normal"
+          test "$d_normal" = "$d_model"
+          test "$d_over" = "$d_model"
+          test "$d_normal" = "$cpp_native"
+          test "$d_normal" = "$cpp_dynamic"
+
+      - name: Measure retired instructions
+        shell: bash
+        run: |
+          D=build/perf-static-ring-overalignment/d-probe
+          CPP=build/perf-static-ring-overalignment/cpp-probe
+          ROUNDS=262144
+          RESULTS=build/perf-static-ring-overalignment/results.tsv
+
+          printf 'toolchain\tvariant\trounds\tIr\tchecksum\n' > "$RESULTS"
+
+          measure() {
+            toolchain="$1"
+            binary="$2"
+            variant="$3"
+            symbol="$4"
+            out="build/perf-static-ring-overalignment/callgrind-${toolchain}-${variant}.out"
+
+            checksum=$("$binary" "$variant" "$ROUNDS" | awk '{print $2}')
+
+            valgrind \
+              --tool=callgrind \
+              --collect-atstart=no \
+              --toggle-collect="$symbol" \
+              --callgrind-out-file="$out" \
+              "$binary" "$variant" "$ROUNDS" \
+              >/dev/null 2>&1
+
+            ir=$(awk '/^summary:/ {print $2}' "$out")
+
+            printf '%s\t%s\t%s\t%s\t%s\n' \
+              "$toolchain" "$variant" "$ROUNDS" "$ir" "$checksum" \
+              >> "$RESULTS"
+          }
+
+          measure d "$D" normal bench_ring_normal
+          measure d "$D" over bench_ring_over
+          measure cpp "$CPP" normal bench_ring_normal_native
+          measure cpp "$CPP" native bench_ring_over_native
+          measure cpp "$CPP" dynamic bench_ring_over_dynamic
+
+          cat "$RESULTS"
+
+          {
+            echo '### ${{ matrix.name }} — production-shaped static ring counts'
+            echo
+            echo '| Toolchain | Variant | Rounds | Ir | Ir/round |'
+            echo '|---|---|---:|---:|---:|'
+            awk -F '\t' 'NR > 1 {
+              printf "| %s | %s | %s | %s | %.6f |\n",
+                $1, $2, $3, $4, $4 / $3
+            }' "$RESULTS"
+            echo
+            awk -F '\t' '
+              $1 == "d" && $2 == "normal" { dn=$4 }
+              $1 == "d" && $2 == "over" { dover=$4 }
+              $1 == "cpp" && $2 == "normal" { cn=$4 }
+              $1 == "cpp" && $2 == "native" { cna=$4 }
+              $1 == "cpp" && $2 == "dynamic" { cdy=$4 }
+              END {
+                printf "D normal vs C++ normal: %+.6f%%\n", (dn-cn)*100.0/cn
+                printf "D over vs C++ native: %+.6f%%\n", (dover-cna)*100.0/cna
+                printf "D over vs C++ dynamic: %+.6f%%\n", (dover-cdy)*100.0/cdy
+              }
+            ' "$RESULTS"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload performance evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: static-ring-overalignment-${{ matrix.id }}
+          path: |
+            build/perf-static-ring-overalignment/results.tsv
+            build/perf-static-ring-overalignment/callgrind-*.out
+          if-no-files-found: error

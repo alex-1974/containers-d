@@ -1,0 +1,148 @@
+name: DMD Codegen Decomposition Probe
+
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - benchmarks/dmd_codegen_probe.d
+      - benchmarks/dmd_codegen_reference.cpp
+      - .github/workflows/perf-dmd-codegen.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dmd-codegen-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  instruction-counts:
+    name: DMD codegen / ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - dmd-2.111.0
+          - dmd-2.112.1
+          - dmd-2.113.0
+          - ldc-1.43.0
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ${{ matrix.compiler }}
+
+      - name: Install analysis tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y valgrind binutils
+
+      - name: Build probes
+        shell: bash
+        run: |
+          mkdir -p build/dmd-codegen
+          case "${{ matrix.compiler }}" in
+            dmd-*)
+              "$DC" -O -release -inline -boundscheck=off                 -of=build/dmd-codegen/d-probe                 benchmarks/dmd_codegen_probe.d
+              ;;
+            ldc-*)
+              "$DC" -O3 -release -boundscheck=off                 -of=build/dmd-codegen/d-probe                 benchmarks/dmd_codegen_probe.d
+              ;;
+          esac
+
+          clang++ -std=c++20 -O3 -DNDEBUG -fno-exceptions -fno-rtti             benchmarks/dmd_codegen_reference.cpp             -o build/dmd-codegen/cpp-probe
+
+          "$DC" --version
+          clang++ --version
+
+      - name: Verify semantic equivalence
+        shell: bash
+        run: |
+          D=build/dmd-codegen/d-probe
+          CPP=build/dmd-codegen/cpp-probe
+          ROUNDS=64
+          reference=""
+
+          for variant in foreach-struct while-struct while-scalar pointer-indices unrolled-pointer4 size-pointer4 size-pointer8 size-indices size-unrolled4 fixed-count unrolled4
+          do
+            d_checksum=$("$D" "$variant" "$ROUNDS" | awk '{print $2}')
+            cpp_checksum=$("$CPP" "$variant" "$ROUNDS" | awk '{print $2}')
+            echo "$variant d=$d_checksum cpp=$cpp_checksum"
+            test "$d_checksum" = "$cpp_checksum"
+
+            if [ -z "$reference" ]; then
+              reference="$d_checksum"
+            else
+              test "$d_checksum" = "$reference"
+            fi
+          done
+
+      - name: Measure retired instructions
+        shell: bash
+        run: |
+          D=build/dmd-codegen/d-probe
+          CPP=build/dmd-codegen/cpp-probe
+          ROUNDS=4096
+          OPERATIONS=$((ROUNDS * 256))
+          RESULTS=build/dmd-codegen/results.tsv
+
+          printf 'toolchain\tvariant\toperations\tIr\tchecksum\n' > "$RESULTS"
+
+          measure() {
+            toolchain="$1"
+            binary="$2"
+            variant="$3"
+            symbol="bench_${variant//-/_}"
+            out="build/dmd-codegen/callgrind-${toolchain}-${variant}.out"
+
+            checksum=$("$binary" "$variant" "$ROUNDS" | awk '{print $2}')
+
+            valgrind --tool=callgrind --collect-atstart=no               --toggle-collect="$symbol"               --callgrind-out-file="$out"               "$binary" "$variant" "$ROUNDS" >/dev/null 2>&1
+
+            ir=$(awk '/^summary:/ {print $2}' "$out")
+            printf '%s\t%s\t%s\t%s\t%s\n'               "$toolchain" "$variant" "$OPERATIONS" "$ir" "$checksum" >> "$RESULTS"
+          }
+
+          for variant in foreach-struct while-struct while-scalar pointer-indices unrolled-pointer4 size-pointer4 size-pointer8 size-indices size-unrolled4 fixed-count unrolled4
+          do
+            measure d "$D" "$variant"
+            measure cpp "$CPP" "$variant"
+          done
+
+          cat "$RESULTS"
+
+          {
+            echo '### ${{ matrix.compiler }} — DMD codegen decomposition'
+            echo
+            echo '| Toolchain | Variant | Ir | Ir/op |'
+            echo '|---|---|---:|---:|'
+            awk -F '\t' 'NR > 1 {
+              printf "| %s | %s | %s | %.6f |\n", $1, $2, $4, $4 / $3
+            }' "$RESULTS"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Capture disassembly
+        shell: bash
+        run: |
+          D=build/dmd-codegen/d-probe
+          CPP=build/dmd-codegen/cpp-probe
+
+          for symbol in bench_foreach_struct bench_while_struct bench_while_scalar bench_pointer_indices bench_unrolled_pointer4 bench_size_pointer4 bench_size_pointer8 bench_size_indices bench_size_unrolled4 bench_fixed_count bench_unrolled4
+          do
+            objdump -d -M intel --disassemble="$symbol" "$D"               > "build/dmd-codegen/d-${symbol}.asm"
+            objdump -d -M intel --disassemble="$symbol" "$CPP"               > "build/dmd-codegen/cpp-${symbol}.asm"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dmd-codegen-${{ matrix.compiler }}
+          path: |
+            build/dmd-codegen/results.tsv
+            build/dmd-codegen/*.asm
+            build/dmd-codegen/callgrind-*.out
+          if-no-files-found: error

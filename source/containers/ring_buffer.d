@@ -10,29 +10,61 @@
  */
 module containers.ring_buffer;
 
+import containers.internal.element_lifetime :
+    CopyEmplaceOps,
+    EndElementLifetimeOps,
+    PlacementMoveOps,
+    sharedElementCopyConstructible = elementCopyConstructible;
+import containers.internal.target_capabilities :
+    preferLocalSimpleCopyConstruction,
+    qualifiedInlineEmbeddedAlignment;
 import core.lifetime : emplace, forward, moveEmplace;
-import std.traits : hasElaborateDestructor, hasIndirections, isNested, Unqual;
+import std.traits : hasIndirections, isNested, Unqual;
 
-private union StaticRingStorage(T, size_t Capacity)
+private union StaticRingStorage(
+    T,
+    size_t Capacity,
+    bool DynamicAlignment)
 {
+    enum size_t alignmentSlack =
+        DynamicAlignment ? T.alignof - 1 : 0;
+
+    static assert(
+        Capacity <= (size_t.max - alignmentSlack) / T.sizeof,
+        "StaticRingBuffer raw storage byte size overflows size_t");
+
+    enum size_t byteLength =
+        T.sizeof * Capacity + alignmentSlack;
+
     static if (hasIndirections!T)
     {
-        static if (isNested!T)
+        static if (DynamicAlignment || isNested!T)
         {
-            // Embedding a nested T would make this storage aggregate inherit
-            // T's hidden context pointer. Use a conservative scan shape instead
-            // while issue #10 researches nested-element semantics separately.
-            void[T.sizeof * Capacity] conservativeGcShape;
+            // A runtime-shifted slot base cannot be described by one exact
+            // T[Capacity] bitmap. Conservatively expose every payload word as
+            // a possible pointer and keep the payload zero-initialized.
+            enum size_t pointerWordCount =
+                (byteLength + (void*).sizeof - 1) / (void*).sizeof;
+            void*[pointerWordCount] conservativeGcShape;
         }
         else
         {
-            // For ordinary element types, expose T's exact repeated pointer
-            // layout to the compiler-generated GC bitmap.
+            // Native direct-base storage can retain T's exact repeated pointer
+            // layout in the compiler-generated GC bitmap.
             T[Capacity] gcShape;
         }
     }
 
-    align(T.alignof) ubyte[T.sizeof * Capacity] bytes;
+    static if (DynamicAlignment)
+    {
+        // The wrapper need not itself inherit T's over-alignment. Slack lets
+        // the container derive an aligned slot base from its actual address.
+        ubyte[byteLength] bytes;
+    }
+    else
+    {
+        align(T.alignof) ubyte[byteLength] bytes;
+    }
 }
 
 version (unittest)
@@ -190,12 +222,20 @@ struct StaticRingBuffer(T, size_t Capacity)
     enum size_t capacity = Capacity;
 
 private:
-    // The raw bytes are the only storage member used by container logic.
-    //
-    // For indirection-bearing T, StaticRingStorage overlays T[Capacity] only so
-    // D's compiler-generated GC pointer bitmap describes the true potential
-    // pointer offsets. The union itself owns no T lifetime.
-    alias Storage = StaticRingStorage!(T, Capacity);
+    mixin PlacementMoveOps!T;
+    static if (sharedElementCopyConstructible!T)
+        mixin CopyEmplaceOps!(T, preferLocalSimpleCopyConstruction);
+    mixin EndElementLifetimeOps!T;
+
+    // Compiler/target-qualified representation. The public container contract
+    // is identical, but targets that cannot propagate T's over-alignment
+    // through aggregate embedding use inline slack plus a runtime-aligned slot
+    // base. Qualified targets keep the original direct-base representation.
+    enum bool needsDynamicAlignment =
+        T.alignof > qualifiedInlineEmbeddedAlignment;
+
+    alias Storage =
+        StaticRingStorage!(T, Capacity, needsDynamicAlignment);
 
     static if (hasIndirections!T)
     {
@@ -213,31 +253,51 @@ private:
     size_t _head;
     size_t _length;
 
-    T* slotPointer(size_t physicalIndex) scope return nothrow @safe @nogc
+    pragma(inline, true)
+    size_t slotBaseOffset() const nothrow @trusted @nogc
     {
-        assert(physicalIndex < Capacity);
-
-        // _storage is aligned to T.alignof and physicalIndex selects one
-        // T-sized slot inside it. The compiler cannot prove that converting
-        // this raw byte address to T* preserves alignment; keep only that cast
-        // inside the trusted boundary. Callers remain responsible for using the
-        // pointer only according to the slot's live-object state.
-        return (() @trusted =>
-            cast(T*) (_storage.bytes.ptr + physicalIndex * T.sizeof))();
+        static if (!needsDynamicAlignment)
+        {
+            return 0;
+        }
+        else
+        {
+            const address = cast(size_t) _storage.bytes.ptr;
+            const mask = T.alignof - 1;
+            const misalignment = address & mask;
+            return (T.alignof - misalignment) & mask;
+        }
     }
 
-    const(T)* slotPointer(size_t physicalIndex) const scope return nothrow @safe @nogc
+    pragma(inline, true)
+    T* slotPointer(size_t physicalIndex)
+        scope return nothrow @trusted @nogc
     {
         assert(physicalIndex < Capacity);
 
-        // Same aligned-slot argument as the mutable overload above.
-        return (() @trusted =>
-            cast(const(T)*) (_storage.bytes.ptr + physicalIndex * T.sizeof))();
+        const begin =
+            slotBaseOffset() + physicalIndex * T.sizeof;
+
+        assert(begin <= _storage.bytes.length - T.sizeof);
+        return cast(T*) (_storage.bytes.ptr + begin);
+    }
+
+    pragma(inline, true)
+    const(T)* slotPointer(size_t physicalIndex)
+        const scope return nothrow @trusted @nogc
+    {
+        assert(physicalIndex < Capacity);
+
+        const begin =
+            slotBaseOffset() + physicalIndex * T.sizeof;
+
+        assert(begin <= _storage.bytes.length - T.sizeof);
+        return cast(const(T)*) (_storage.bytes.ptr + begin);
     }
 
     T[] slotSlice(
         size_t physicalStart,
-        size_t count) scope return nothrow @safe @nogc
+        size_t count) scope return nothrow @trusted @nogc
     {
         if (count == 0)
             return null;
@@ -245,16 +305,12 @@ private:
         assert(physicalStart < Capacity);
         assert(count <= Capacity - physicalStart);
 
-        // Pointer slicing is the single operation the compiler cannot prove
-        // safe here. slotPointer has already established the aligned slot
-        // address; count is bounded to the same inline storage region.
-        return (() @trusted =>
-            slotPointer(physicalStart)[0 .. count])();
+        return slotPointer(physicalStart)[0 .. count];
     }
 
     const(T)[] slotSlice(
         size_t physicalStart,
-        size_t count) const scope return nothrow @safe @nogc
+        size_t count) const scope return nothrow @trusted @nogc
     {
         if (count == 0)
             return null;
@@ -262,8 +318,7 @@ private:
         assert(physicalStart < Capacity);
         assert(count <= Capacity - physicalStart);
 
-        return (() @trusted =>
-            slotPointer(physicalStart)[0 .. count])();
+        return slotPointer(physicalStart)[0 .. count];
     }
 
     size_t physicalIndex(size_t logicalIndex) const nothrow @safe @nogc
@@ -289,69 +344,24 @@ private:
         }
     }
 
-    // Define the container copy contract by the language operation we
-    // actually require: construction of T from an lvalue T. Phobos
-    // isCopyable changed semantics across the controlled compiler matrix and
-    // is therefore too broad for this ownership contract.
-    enum bool elementCopyConstructible = __traits(compiles, {
-        void probe(ref T source)
-        {
-            T copy = source;
-        }
-    });
-
-    // Check whether ordinary language move construction of T is permitted
-    // from @safe code. Placement new itself is @system, so the raw-storage
-    // helper below may only elevate that operation to @trusted when T's
-    // constructor contract is independently @safe.
-    enum bool safeLanguageMove = __traits(compiles, {
-        void probe(ref T source) @safe
-        {
-            T target = __rvalue(source);
-        }
-    });
-
-    static if (__traits(hasMoveConstructor, T))
-    {
-        static if (safeLanguageMove)
-        {
-            T* placementMoveConstruct(
-                T* target,
-                ref T source) @trusted
-            {
-                // Safety proof:
-                // - target comes from slotPointer and is aligned storage for T;
-                // - the caller only supplies an unused destination slot;
-                // - source is a distinct live T;
-                // - T's language move construction is independently @safe;
-                // - placement new begins exactly one T lifetime at target.
-                return new (*target) T(__rvalue(source));
-            }
-        }
-        else
-        {
-            T* placementMoveConstruct(
-                T* target,
-                ref T source) @system
-            {
-                return new (*target) T(__rvalue(source));
-            }
-        }
-    }
+    // Reuse the package-internal language-capability classification while
+    // preserving the existing StaticRingBuffer copy contract.
+    enum bool elementCopyConstructible =
+        sharedElementCopyConstructible!T;
 
     void clearVacatedSlot(size_t physicalIndex) nothrow @safe @nogc
     {
         static if (hasIndirections!T)
         {
-            const begin = physicalIndex * T.sizeof;
+            const begin =
+                slotBaseOffset() + physicalIndex * T.sizeof;
             _storage.bytes[begin .. begin + T.sizeof] = 0;
         }
     }
 
     void endSlotLifetime(size_t physicalIndex)
     {
-        static if (hasElaborateDestructor!T)
-            destroy!false(*slotPointer(physicalIndex));
+        endElementLifetime(slotPointer(physicalIndex));
 
         // Class/interface references and other non-struct indirections are
         // values stored in the slot; removing them must not finalize the
@@ -657,6 +667,10 @@ public:
             !__traits(isRef, value))
         {
             placementMoveConstruct(slotPointer(insertionIndex), value);
+        }
+        else static if (is(U == T) && __traits(isRef, value))
+        {
+            copyEmplaceConstruct(slotPointer(insertionIndex), value);
         }
         else
         {

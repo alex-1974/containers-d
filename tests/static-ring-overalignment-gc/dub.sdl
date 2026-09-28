@@ -1,0 +1,5 @@
+name "containers-d-static-ring-overalignment-gc"
+description "GC reachability test for over-aligned StaticRingBuffer storage"
+targetType "executable"
+
+dependency "containers-d" path="../../"

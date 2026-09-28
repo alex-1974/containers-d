@@ -1,0 +1,118 @@
+name: Element Lifetime Copy Probe
+
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - benchmarks/element_lifetime_copy_probe.d
+      - benchmarks/element_lifetime_copy_reference.cpp
+      - .github/workflows/perf-element-lifetime-copy.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: element-copy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  instruction-counts:
+    name: Placement copy / ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - dmd-2.111.0
+          - dmd-2.112.1
+          - dmd-2.113.0
+          - ldc-1.43.0
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ${{ matrix.compiler }}
+
+      - name: Install Callgrind
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y valgrind
+
+      - name: Build probes
+        shell: bash
+        run: |
+          mkdir -p build/element-copy
+
+          case "${{ matrix.compiler }}" in
+            dmd-*)
+              "$DC" -O -release -inline -boundscheck=off                 -of=build/element-copy/d-probe                 benchmarks/element_lifetime_copy_probe.d
+              ;;
+            ldc-*)
+              "$DC" -O3 -release -boundscheck=off                 -of=build/element-copy/d-probe                 benchmarks/element_lifetime_copy_probe.d
+              ;;
+          esac
+
+          clang++ -std=c++20 -O3 -DNDEBUG -fno-exceptions -fno-rtti             benchmarks/element_lifetime_copy_reference.cpp             -o build/element-copy/cpp-probe
+
+      - name: Verify semantics and checksum
+        shell: bash
+        run: |
+          D=build/element-copy/d-probe
+          CPP=build/element-copy/cpp-probe
+          ROUNDS=64
+
+          emplace=$("$D" emplace "$ROUNDS" | awk '{print $2}')
+          copyemplace=$("$D" copyemplace "$ROUNDS" | awk '{print $2}')
+          localblit=$("$D" localblit "$ROUNDS" | awk '{print $2}')
+          cpp=$("$CPP" "$ROUNDS" | awk '{print $2}')
+
+          echo "emplace=$emplace copyemplace=$copyemplace localblit=$localblit cpp=$cpp"
+          test "$emplace" = "$copyemplace"
+          test "$copyemplace" = "$localblit"
+          test "$localblit" = "$cpp"
+
+      - name: Measure retired instructions
+        shell: bash
+        run: |
+          D=build/element-copy/d-probe
+          CPP=build/element-copy/cpp-probe
+          ROUNDS=4096
+          OPERATIONS=$((ROUNDS * 256))
+          RESULTS=build/element-copy/results.tsv
+
+          printf 'toolchain\tvariant\toperations\tIr\tchecksum\n' > "$RESULTS"
+
+          measure_d() {
+            variant="$1"
+            symbol="bench_${variant}"
+            out="build/element-copy/callgrind-d-${variant}.out"
+            checksum=$("$D" "$variant" "$ROUNDS" | awk '{print $2}')
+
+            valgrind --tool=callgrind --collect-atstart=no               --toggle-collect="$symbol"               --callgrind-out-file="$out"               "$D" "$variant" "$ROUNDS" >/dev/null 2>&1
+
+            ir=$(awk '/^summary:/ {print $2}' "$out")
+            printf 'd\t%s\t%s\t%s\t%s\n'               "$variant" "$OPERATIONS" "$ir" "$checksum" >> "$RESULTS"
+          }
+
+          measure_d emplace
+          measure_d copyemplace
+          measure_d localblit
+
+          cpp_checksum=$("$CPP" "$ROUNDS" | awk '{print $2}')
+          valgrind --tool=callgrind --collect-atstart=no             --toggle-collect=bench_cpp             --callgrind-out-file=build/element-copy/callgrind-cpp.out             "$CPP" "$ROUNDS" >/dev/null 2>&1
+          cpp_ir=$(awk '/^summary:/ {print $2}' build/element-copy/callgrind-cpp.out)
+          printf 'cpp\tconstruct_at\t%s\t%s\t%s\n'             "$OPERATIONS" "$cpp_ir" "$cpp_checksum" >> "$RESULTS"
+
+          cat "$RESULTS"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: element-copy-${{ matrix.compiler }}
+          path: |
+            build/element-copy/results.tsv
+            build/element-copy/callgrind-*.out
+          if-no-files-found: error
