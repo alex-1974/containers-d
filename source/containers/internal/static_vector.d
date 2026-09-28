@@ -14,7 +14,7 @@ import containers.internal.element_lifetime :
     elementHasIndirections,
     elementNeedsDestruction,
     hasLanguageMoveConstructor;
-import containers.internal.inline_storage : InlineRawStorage;
+import containers.internal.inline_storage : InlineRawStorageOps;
 
 import core.lifetime : emplace, forward, moveEmplace;
 import std.traits :
@@ -49,9 +49,10 @@ if (Capacity > 0)
     enum size_t capacity = Capacity;
 
 private:
-    alias Storage = InlineRawStorage!(T, Capacity);
+    // Generate the inline storage state/accessors in this aggregate. This is
+    // performance-significant on DMD 2.111; see the M4.3 expansion probe.
+    mixin InlineRawStorageOps!(T, Capacity);
 
-    Storage _storage;
     size_t _length;
 
     mixin PlacementMoveOps!T;
@@ -67,10 +68,10 @@ private:
     void endLiveSlot()(size_t physicalIndex)
     {
         static if (elementNeedsDestruction!T)
-            endElementLifetime(_storage.slotPointer(physicalIndex));
+            endElementLifetime(slotPointer(physicalIndex));
 
         static if (elementHasIndirections!T)
-            _storage.clearVacatedSlot(physicalIndex);
+            clearVacatedSlot(physicalIndex);
     }
 
 public:
@@ -96,54 +97,54 @@ public:
         return scope pure nothrow @safe @nogc
     {
         assert(!empty);
-        return *_storage.slotPointer(0);
+        return *slotPointer(0);
     }
 
     ref const(T) front() const
         return scope pure nothrow @safe @nogc
     {
         assert(!empty);
-        return *_storage.slotPointer(0);
+        return *slotPointer(0);
     }
 
     ref T back()
         return scope pure nothrow @safe @nogc
     {
         assert(!empty);
-        return *_storage.slotPointer(_length - 1);
+        return *slotPointer(_length - 1);
     }
 
     ref const(T) back() const
         return scope pure nothrow @safe @nogc
     {
         assert(!empty);
-        return *_storage.slotPointer(_length - 1);
+        return *slotPointer(_length - 1);
     }
 
     ref T opIndex(size_t index)
         return scope pure nothrow @safe @nogc
     {
         assert(index < _length);
-        return *_storage.slotPointer(index);
+        return *slotPointer(index);
     }
 
     ref const(T) opIndex(size_t index) const
         return scope pure nothrow @safe @nogc
     {
         assert(index < _length);
-        return *_storage.slotPointer(index);
+        return *slotPointer(index);
     }
 
     T[] asSlice()
         return scope pure nothrow @safe @nogc
     {
-        return _storage.slotSlice(0, _length);
+        return slotSlice(0, _length);
     }
 
     const(T)[] asSlice() const
         return scope pure nothrow @safe @nogc
     {
-        return _storage.slotSlice(0, _length);
+        return slotSlice(0, _length);
     }
 
     /**
@@ -158,22 +159,35 @@ public:
      */
     void pushBack(U)(auto ref U value)
     if (is(Unqual!U == T) &&
-        __traits(compiles, emplace(cast(T*) null, forward!value)))
+        (
+            (hasLanguageMoveConstructor!T &&
+                is(U == T) &&
+                !__traits(isRef, value)) ||
+            __traits(compiles,
+                emplace(cast(T*) null, forward!value))
+        ))
     {
         assert(!full);
 
-        static if (hasLanguageMoveConstructor!T &&
+        static if (__traits(isScalar, T))
+        {
+            // For scalar values the destination slot needs no language-level
+            // construction machinery. Keeping this assignment local avoids
+            // DMD 2.111's measured non-inlined core.lifetime.emplaceRef path.
+            *slotPointer(_length) = value;
+        }
+        else static if (hasLanguageMoveConstructor!T &&
             is(U == T) &&
             !__traits(isRef, value))
         {
             placementMoveConstruct(
-                _storage.slotPointer(_length),
+                slotPointer(_length),
                 value);
         }
         else
         {
             emplace(
-                _storage.slotPointer(_length),
+                slotPointer(_length),
                 forward!value);
         }
 
@@ -182,7 +196,13 @@ public:
 
     bool tryPushBack(U)(auto ref U value)
     if (is(Unqual!U == T) &&
-        __traits(compiles, emplace(cast(T*) null, forward!value)))
+        (
+            (hasLanguageMoveConstructor!T &&
+                is(U == T) &&
+                !__traits(isRef, value)) ||
+            __traits(compiles,
+                emplace(cast(T*) null, forward!value))
+        ))
     {
         if (full)
             return false;
@@ -228,8 +248,8 @@ public:
                 foreach (index; 0 .. rhs._length)
                 {
                     emplace(
-                        _storage.slotPointer(_length),
-                        *rhs._storage.slotPointer(index));
+                        slotPointer(_length),
+                        *rhs.slotPointer(index));
                     ++_length;
                 }
             }
@@ -246,9 +266,9 @@ public:
             foreach (index; 0 .. rhs._length)
             {
                 auto source =
-                    rhs._storage.slotPointer(index);
+                    rhs.slotPointer(index);
                 auto target =
-                    _storage.slotPointer(_length);
+                    slotPointer(_length);
 
                 static if (hasLanguageMoveConstructor!T)
                     placementMoveConstruct(target, *source);
