@@ -221,13 +221,51 @@ extern(C) ulong bench_local_over(
     return checksum;
 }
 
+
+pragma(inline, false)
+extern(C) ulong bench_base_normal(
+    const(NormalValue)* base,
+    const(ubyte)* indices,
+    size_t count,
+    size_t rounds) @system @nogc nothrow
+{
+    ulong checksum;
+
+    foreach (_; 0 .. rounds)
+    {
+        foreach (i; 0 .. count)
+            checksum += base[indices[i]].value;
+    }
+
+    return checksum;
+}
+
+pragma(inline, false)
+extern(C) ulong bench_base_over(
+    const(OverAlignedValue)* base,
+    const(ubyte)* indices,
+    size_t count,
+    size_t rounds) @system @nogc nothrow
+{
+    ulong checksum;
+
+    foreach (_; 0 .. rounds)
+    {
+        foreach (i; 0 .. count)
+            checksum += base[indices[i]].value;
+    }
+
+    return checksum;
+}
+
 void main(string[] args)
 {
     if (args.length != 3)
     {
         stderr.writeln(
             "usage: static-inline-alignment-perf-probe " ~
-            "<imported-normal|imported-over|local-normal|local-over> <rounds>");
+            "<imported-normal|imported-over|local-normal|local-over|" ~
+            "base-normal|base-over> <rounds>");
         return;
     }
 
@@ -272,6 +310,32 @@ void main(string[] args)
             LocalOverStorage storage;
             initialize!(LocalOverStorage, OverAlignedValue)(storage);
             checksum = bench_local_over(storage, indices[], rounds);
+            finish(storage);
+            break;
+        }
+
+        case "base-normal":
+        {
+            ImportedNormalStorage storage;
+            initialize!(ImportedNormalStorage, NormalValue)(storage);
+            checksum = bench_base_normal(
+                storage.slotPointer(0),
+                indices.ptr,
+                indices.length,
+                rounds);
+            finish(storage);
+            break;
+        }
+
+        case "base-over":
+        {
+            ImportedOverStorage storage;
+            initialize!(ImportedOverStorage, OverAlignedValue)(storage);
+            checksum = bench_base_over(
+                storage.slotPointer(0),
+                indices.ptr,
+                indices.length,
+                rounds);
             finish(storage);
             break;
         }
