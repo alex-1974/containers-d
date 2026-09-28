@@ -79,7 +79,7 @@ jobs:
 
           cat "$RESULTS"
 
-          for variant in baseline candidate; do
+          for variant in minimal matched candidate; do
             nm -S --size-sort --radix=d               "build/static-vector-build-cost/${variant}.o"               > "build/static-vector-build-cost/${variant}.nm.txt"
 
             objdump -h               "build/static-vector-build-cost/${variant}.o"               > "build/static-vector-build-cost/${variant}.sections.txt"
