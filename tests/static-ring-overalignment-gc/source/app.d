@@ -133,7 +133,7 @@ void main()
     createUnrootedControl();
     auto holder = createBufferedHolder();
 
-    const slotAddress = cast(size_t) &holder.buffer.front;
+    const slotAddress = cast(size_t) &holder.buffer[0];
     assert(slotAddress % OverAlignedReference.alignof == 0);
 
     collectUntilControl();
