@@ -140,17 +140,20 @@ jobs:
           CPP=build/perf-static-ring-overalignment/cpp-probe
           ROUNDS=4096
 
+          d_model=$("$D" model "$ROUNDS" | awk '{print $2}')
           d_normal=$("$D" normal "$ROUNDS" | awk '{print $2}')
           d_over=$("$D" over "$ROUNDS" | awk '{print $2}')
           cpp_normal=$("$CPP" normal "$ROUNDS" | awk '{print $2}')
           cpp_native=$("$CPP" native "$ROUNDS" | awk '{print $2}')
           cpp_dynamic=$("$CPP" dynamic "$ROUNDS" | awk '{print $2}')
 
-          printf 'd_normal=%s d_over=%s cpp_normal=%s cpp_native=%s cpp_dynamic=%s\n' \
-            "$d_normal" "$d_over" "$cpp_normal" "$cpp_native" "$cpp_dynamic"
+          printf 'd_model=%s d_normal=%s d_over=%s cpp_normal=%s cpp_native=%s cpp_dynamic=%s\n' \
+            "$d_model" "$d_normal" "$d_over" \
+            "$cpp_normal" "$cpp_native" "$cpp_dynamic"
 
-          test "$d_normal" = "$d_over"
-          test "$d_normal" = "$cpp_normal"
+          test "$d_model" = "$cpp_normal"
+          test "$d_normal" = "$d_model"
+          test "$d_over" = "$d_model"
           test "$d_normal" = "$cpp_native"
           test "$d_normal" = "$cpp_dynamic"
 
