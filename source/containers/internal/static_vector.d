@@ -129,23 +129,36 @@ private:
 
     size_t _length;
 
-    mixin PlacementMoveOps!T;
-    mixin EndElementLifetimeOps!T;
-
-    enum bool needsCustomTransfer =
-        !elementCopyConstructible!T ||
-        hasElaborateCopyConstructor!T ||
-        hasElaborateDestructor!T ||
-        hasElaborateMove!T ||
-        hasLanguageMoveConstructor!T;
-
-    void endLiveSlot()(size_t physicalIndex)
+    static if (useDirectScalarStorage)
     {
-        static if (elementNeedsDestruction!T)
-            endElementLifetime(slotPointer(physicalIndex));
+        enum bool needsCustomTransfer = false;
 
-        static if (elementHasIndirections!T)
-            clearVacatedSlot(physicalIndex);
+        void endLiveSlot()(size_t physicalIndex)
+        {
+            static if (elementHasIndirections!T)
+                clearVacatedSlot(physicalIndex);
+        }
+    }
+    else
+    {
+        mixin PlacementMoveOps!T;
+        mixin EndElementLifetimeOps!T;
+
+        enum bool needsCustomTransfer =
+            !elementCopyConstructible!T ||
+            hasElaborateCopyConstructor!T ||
+            hasElaborateDestructor!T ||
+            hasElaborateMove!T ||
+            hasLanguageMoveConstructor!T;
+
+        void endLiveSlot()(size_t physicalIndex)
+        {
+            static if (elementNeedsDestruction!T)
+                endElementLifetime(slotPointer(physicalIndex));
+
+            static if (elementHasIndirections!T)
+                clearVacatedSlot(physicalIndex);
+        }
     }
 
 public:
@@ -237,59 +250,79 @@ public:
      * provided separately so the hot path need not pay a full-capacity branch
      * after assertions are removed.
      */
-    pragma(inline, true)
-    void pushBack(U)(auto ref U value)
-    if (is(Unqual!U == T) &&
-        (
-            (hasLanguageMoveConstructor!T &&
-                is(U == T) &&
-                !__traits(isRef, value)) ||
-            __traits(compiles,
-                emplace(cast(T*) null, forward!value))
-        ))
+    static if (useDirectScalarStorage)
     {
-        assert(!full);
+        pragma(inline, true)
+        void pushBack(T value)
+            pure nothrow @safe @nogc
+        {
+            assert(!full);
 
-        static if (__traits(isScalar, T))
-        {
-            // For scalar values the destination slot needs no language-level
-            // construction machinery. Keeping this assignment local avoids
-            // DMD 2.111's measured non-inlined core.lifetime.emplaceRef path.
-            *slotPointer(_length) = value;
-        }
-        else static if (hasLanguageMoveConstructor!T &&
-            is(U == T) &&
-            !__traits(isRef, value))
-        {
-            placementMoveConstruct(
-                slotPointer(_length),
-                value);
-        }
-        else
-        {
-            emplace(
-                slotPointer(_length),
-                forward!value);
+            _directData[_length] = value;
+            ++_length;
         }
 
-        ++_length;
+        pragma(inline, true)
+        bool tryPushBack(T value)
+            pure nothrow @safe @nogc
+        {
+            if (full)
+                return false;
+
+            _directData[_length] = value;
+            ++_length;
+            return true;
+        }
     }
-
-    bool tryPushBack(U)(auto ref U value)
-    if (is(Unqual!U == T) &&
-        (
-            (hasLanguageMoveConstructor!T &&
-                is(U == T) &&
-                !__traits(isRef, value)) ||
-            __traits(compiles,
-                emplace(cast(T*) null, forward!value))
-        ))
+    else
     {
-        if (full)
-            return false;
+        pragma(inline, true)
+        void pushBack(U)(auto ref U value)
+        if (is(Unqual!U == T) &&
+            (
+                (hasLanguageMoveConstructor!T &&
+                    is(U == T) &&
+                    !__traits(isRef, value)) ||
+                __traits(compiles,
+                    emplace(cast(T*) null, forward!value))
+            ))
+        {
+            assert(!full);
 
-        pushBack(forward!value);
-        return true;
+            static if (hasLanguageMoveConstructor!T &&
+                is(U == T) &&
+                !__traits(isRef, value))
+            {
+                placementMoveConstruct(
+                    slotPointer(_length),
+                    value);
+            }
+            else
+            {
+                emplace(
+                    slotPointer(_length),
+                    forward!value);
+            }
+
+            ++_length;
+        }
+
+        bool tryPushBack(U)(auto ref U value)
+        if (is(Unqual!U == T) &&
+            (
+                (hasLanguageMoveConstructor!T &&
+                    is(U == T) &&
+                    !__traits(isRef, value)) ||
+                __traits(compiles,
+                    emplace(cast(T*) null, forward!value))
+            ))
+        {
+            if (full)
+                return false;
+
+            pushBack(forward!value);
+            return true;
+        }
     }
 
     void popBack()()
