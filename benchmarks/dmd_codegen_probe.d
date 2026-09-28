@@ -106,6 +106,73 @@ extern(C) ulong bench_pointer_indices(
 }
 
 pragma(inline, false)
+extern(C) ulong bench_unrolled_pointer4(
+    const(ulong)* base, const(ubyte)* indices,
+    size_t rounds) @system @nogc nothrow
+{
+    ulong checksum;
+    size_t round;
+    while (round < rounds)
+    {
+        auto cursor = indices;
+        const end = indices + indexCount;
+        while (cursor != end)
+        {
+            checksum += base[cursor[0]];
+            checksum += base[cursor[1]];
+            checksum += base[cursor[2]];
+            checksum += base[cursor[3]];
+            cursor += 4;
+        }
+        ++round;
+    }
+    return checksum;
+}
+
+pragma(inline, false)
+extern(C) ulong bench_size_indices(
+    const(ulong)* base, const(size_t)* indices,
+    size_t rounds) @system @nogc nothrow
+{
+    ulong checksum;
+    size_t round;
+    while (round < rounds)
+    {
+        size_t i;
+        while (i < indexCount)
+        {
+            checksum += base[indices[i]];
+            ++i;
+        }
+        ++round;
+    }
+    return checksum;
+}
+
+pragma(inline, false)
+extern(C) ulong bench_size_unrolled4(
+    const(ulong)* base, const(size_t)* indices,
+    size_t rounds) @system @nogc nothrow
+{
+    ulong checksum;
+    size_t round;
+    while (round < rounds)
+    {
+        size_t i;
+        while (i < indexCount)
+        {
+            checksum += base[indices[i]];
+            checksum += base[indices[i + 1]];
+            checksum += base[indices[i + 2]];
+            checksum += base[indices[i + 3]];
+            i += 4;
+        }
+        ++round;
+    }
+    return checksum;
+}
+
+pragma(inline, false)
 extern(C) ulong bench_fixed_count(
     const(ulong)* base, const(ubyte)* indices,
     size_t rounds) @system @nogc nothrow
@@ -155,14 +222,19 @@ void main(string[] args)
         stderr.writeln(
             "usage: dmd-codegen-probe " ~
             "<foreach-struct|while-struct|while-scalar|pointer-indices|" ~
+            "unrolled-pointer4|size-indices|size-unrolled4|" ~
             "fixed-count|unrolled4> <rounds>");
         return;
     }
 
     Value[valueCount] values = void;
     ubyte[indexCount] indices = void;
+    size_t[indexCount] sizeIndices = void;
     fillValues(values);
     fillIndices(indices);
+
+    foreach (i, index; indices)
+        sizeIndices[i] = index;
 
     const rounds = to!size_t(args[2]);
     const scalarBase = cast(const(ulong)*)values.ptr;
@@ -185,6 +257,18 @@ void main(string[] args)
         case "pointer-indices":
             checksum = bench_pointer_indices(
                 scalarBase, indices.ptr, indices.length, rounds);
+            break;
+        case "unrolled-pointer4":
+            checksum = bench_unrolled_pointer4(
+                scalarBase, indices.ptr, rounds);
+            break;
+        case "size-indices":
+            checksum = bench_size_indices(
+                scalarBase, sizeIndices.ptr, rounds);
+            break;
+        case "size-unrolled4":
+            checksum = bench_size_unrolled4(
+                scalarBase, sizeIndices.ptr, rounds);
             break;
         case "fixed-count":
             checksum = bench_fixed_count(
