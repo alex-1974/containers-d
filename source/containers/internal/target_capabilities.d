@@ -58,3 +58,34 @@ else
         qualifiedInlineEmbeddedAlignment =
             nativePointerAlignment;
 }
+
+
+/**
+ * Whether hot exact-T lvalue insertion should use a locally generated simple
+ * copy-construction bridge instead of core.lifetime.emplace.
+ *
+ * DMD 2.111/2.112/2.113 on Linux x86_64 retain substantial out-of-line
+ * emplace/copyEmplace cost for simple structs. Dedicated Callgrind probes show
+ * that local fixed-size copying removes most of that cost. LDC already lowers
+ * ordinary emplace to C++-class code and deliberately keeps the standard path.
+ *
+ * Unknown DMD targets remain conservative until independently qualified.
+ */
+version (DigitalMars)
+{
+    version (linux)
+    {
+        version (X86_64)
+            package(containers) enum bool preferLocalSimpleCopyConstruction = true;
+        else
+            package(containers) enum bool preferLocalSimpleCopyConstruction = false;
+    }
+    else
+    {
+        package(containers) enum bool preferLocalSimpleCopyConstruction = false;
+    }
+}
+else
+{
+    package(containers) enum bool preferLocalSimpleCopyConstruction = false;
+}
