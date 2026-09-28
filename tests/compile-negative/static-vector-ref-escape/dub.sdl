@@ -1,0 +1,5 @@
+name "containers-d-static-vector-ref-escape-negative"
+description "Negative DIP1000 lifetime probe for StaticVector element refs"
+targetType "executable"
+
+dependency "containers-d" path="../../../"
