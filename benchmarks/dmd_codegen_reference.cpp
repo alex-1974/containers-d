@@ -136,6 +136,58 @@ std::uint64_t bench_unrolled_pointer4(
 }
 
 extern "C" __attribute__((noinline))
+std::uint64_t bench_size_pointer4(
+    const std::uint64_t* base, const std::size_t* indices,
+    std::size_t rounds) noexcept
+{
+    std::uint64_t checksum = 0;
+    std::size_t round = 0;
+    while (round < rounds)
+    {
+        const auto* cursor = indices;
+        const auto* end = indices + index_count;
+        while (cursor != end)
+        {
+            checksum += base[cursor[0]];
+            checksum += base[cursor[1]];
+            checksum += base[cursor[2]];
+            checksum += base[cursor[3]];
+            cursor += 4;
+        }
+        ++round;
+    }
+    return checksum;
+}
+
+extern "C" __attribute__((noinline))
+std::uint64_t bench_size_pointer8(
+    const std::uint64_t* base, const std::size_t* indices,
+    std::size_t rounds) noexcept
+{
+    std::uint64_t checksum = 0;
+    std::size_t round = 0;
+    while (round < rounds)
+    {
+        const auto* cursor = indices;
+        const auto* end = indices + index_count;
+        while (cursor != end)
+        {
+            checksum += base[cursor[0]];
+            checksum += base[cursor[1]];
+            checksum += base[cursor[2]];
+            checksum += base[cursor[3]];
+            checksum += base[cursor[4]];
+            checksum += base[cursor[5]];
+            checksum += base[cursor[6]];
+            checksum += base[cursor[7]];
+            cursor += 8;
+        }
+        ++round;
+    }
+    return checksum;
+}
+
+extern "C" __attribute__((noinline))
 std::uint64_t bench_size_indices(
     const std::uint64_t* base, const std::size_t* indices,
     std::size_t rounds) noexcept
@@ -254,6 +306,10 @@ int main(int argc, char** argv)
         checksum = bench_pointer_indices(scalar_base, indices.data(), indices.size(), rounds);
     else if (variant == "unrolled-pointer4")
         checksum = bench_unrolled_pointer4(scalar_base, indices.data(), rounds);
+    else if (variant == "size-pointer4")
+        checksum = bench_size_pointer4(scalar_base, size_indices.data(), rounds);
+    else if (variant == "size-pointer8")
+        checksum = bench_size_pointer8(scalar_base, size_indices.data(), rounds);
     else if (variant == "size-indices")
         checksum = bench_size_indices(scalar_base, size_indices.data(), rounds);
     else if (variant == "size-unrolled4")
