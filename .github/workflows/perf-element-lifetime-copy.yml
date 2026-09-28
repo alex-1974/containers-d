@@ -67,11 +67,13 @@ jobs:
 
           emplace=$("$D" emplace "$ROUNDS" | awk '{print $2}')
           copyemplace=$("$D" copyemplace "$ROUNDS" | awk '{print $2}')
+          localblit=$("$D" localblit "$ROUNDS" | awk '{print $2}')
           cpp=$("$CPP" "$ROUNDS" | awk '{print $2}')
 
-          echo "emplace=$emplace copyemplace=$copyemplace cpp=$cpp"
+          echo "emplace=$emplace copyemplace=$copyemplace localblit=$localblit cpp=$cpp"
           test "$emplace" = "$copyemplace"
-          test "$copyemplace" = "$cpp"
+          test "$copyemplace" = "$localblit"
+          test "$localblit" = "$cpp"
 
       - name: Measure retired instructions
         shell: bash
@@ -98,6 +100,7 @@ jobs:
 
           measure_d emplace
           measure_d copyemplace
+          measure_d localblit
 
           cpp_checksum=$("$CPP" "$ROUNDS" | awk '{print $2}')
           valgrind --tool=callgrind --collect-atstart=no             --toggle-collect=bench_cpp             --callgrind-out-file=build/element-copy/callgrind-cpp.out             "$CPP" "$ROUNDS" >/dev/null 2>&1
