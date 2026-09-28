@@ -14,6 +14,7 @@
 module containers.static_inline_alignment_perf_probe;
 
 import containers.internal.inline_storage : InlineRawStorage;
+import core.lifetime : emplace;
 import std.conv : to;
 import std.stdio : stderr, writeln;
 
@@ -140,7 +141,7 @@ private void initialize(Storage, Value)(ref Storage storage)
     @trusted @nogc nothrow
 {
     foreach (i; 0 .. slotCount)
-        new (*storage.slotPointer(i)) Value(slotValue(i));
+        emplace(storage.slotPointer(i), slotValue(i));
 }
 
 private void finish(Storage)(ref Storage storage)
