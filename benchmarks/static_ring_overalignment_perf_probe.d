@@ -65,6 +65,44 @@ private void initialize(Ring, Value)(
     }
 }
 
+
+pragma(inline, false)
+extern(C) ulong bench_model(
+    scope const ulong[] values,
+    size_t rounds) @safe @nogc nothrow
+{
+    ulong[capacity] slots = void;
+
+    foreach (i; 0 .. capacity)
+        slots[i] = values[i];
+
+    size_t head;
+    ulong checksum;
+
+    foreach (i; 0 .. rounds)
+    {
+        const logicalIndex = (i * 5) & (capacity - 1);
+        const backIndex = (head + capacity - 1) & (capacity - 1);
+        const indexed = (head + logicalIndex) & (capacity - 1);
+
+        checksum += slots[head] * 3;
+        checksum ^= slots[backIndex] * 5;
+        checksum += slots[indexed] * 7;
+
+        ++head;
+        if (head == capacity)
+            head = 0;
+
+        const insertionIndex = (head + capacity - 1) & (capacity - 1);
+        slots[insertionIndex] =
+            values[(i * 13) & (valueCount - 1)] ^ cast(ulong) i;
+    }
+
+    checksum ^= slots[head];
+    checksum += slots[(head + capacity - 1) & (capacity - 1)];
+    return checksum;
+}
+
 pragma(inline, false)
 extern(C) ulong bench_ring_normal(
     ref NormalRing ring,
@@ -132,7 +170,7 @@ void main(string[] args)
     {
         stderr.writeln(
             "usage: static-ring-overalignment-perf-probe " ~
-            "<normal|over> <rounds>");
+            "<model|normal|over> <rounds>");
         return;
     }
 
@@ -144,6 +182,10 @@ void main(string[] args)
 
     final switch (args[1])
     {
+        case "model":
+            checksum = bench_model(values[], rounds);
+            break;
+
         case "normal":
         {
             NormalRing ring;
