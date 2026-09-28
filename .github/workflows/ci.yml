@@ -85,6 +85,11 @@ jobs:
         shell: bash
         run: dub run --root=tests/static-vector-lifecycle --compiler="$DC" --force
 
+
+      - name: StaticVector adversarial reference model
+        shell: bash
+        run: dub run --root=tests/static-vector-adversarial --compiler="$DC" --force
+
       - name: StaticVector GC reachability
         shell: bash
         run: dub run --root=tests/static-vector-gc --compiler="$DC" --force
