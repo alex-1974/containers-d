@@ -161,7 +161,7 @@ void main()
         value.value = ringIndex + 1;
         assert(ring.tryPushBack(value));
 
-        const address = cast(size_t) &ring.front;
+        const address = cast(size_t) &ring[0];
         writeln("ring-array-", ringIndex,
             "-front-slot-mod-element-align ",
             address % OverAligned64.alignof);
