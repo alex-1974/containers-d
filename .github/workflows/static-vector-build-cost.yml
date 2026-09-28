@@ -77,6 +77,12 @@ jobs:
 
           cat "$RESULTS"
 
+          for variant in baseline candidate; do
+            nm -S --size-sort --radix=d               "build/static-vector-build-cost/${variant}.o"               > "build/static-vector-build-cost/${variant}.nm.txt"
+
+            objdump -h               "build/static-vector-build-cost/${variant}.o"               > "build/static-vector-build-cost/${variant}.sections.txt"
+          done
+
           {
             echo '### ${{ matrix.compiler }} — StaticVector build cost'
             echo
@@ -94,4 +100,7 @@ jobs:
           path: |
             build/static-vector-build-cost/results.tsv
             build/static-vector-build-cost/*.time
+            build/static-vector-build-cost/*.nm.txt
+            build/static-vector-build-cost/*.sections.txt
+            build/static-vector-build-cost/*.o
           if-no-files-found: error
