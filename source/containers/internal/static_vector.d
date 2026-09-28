@@ -62,62 +62,6 @@ private:
     static if (useDirectScalarStorage)
     {
         T[Capacity] _directData;
-
-        pragma(inline, true)
-        T* slotPointer(size_t physicalIndex)
-            return scope pure nothrow @safe @nogc
-        {
-            assert(physicalIndex < Capacity);
-            return &_directData[physicalIndex];
-        }
-
-        pragma(inline, true)
-        const(T)* slotPointer(size_t physicalIndex)
-            const return scope pure nothrow @safe @nogc
-        {
-            assert(physicalIndex < Capacity);
-            return &_directData[physicalIndex];
-        }
-
-        pragma(inline, true)
-        T[] slotSlice(size_t physicalStart, size_t count)
-            return scope pure nothrow @safe @nogc
-        {
-            if (count == 0)
-                return null;
-
-            assert(physicalStart < Capacity);
-            assert(count <= Capacity - physicalStart);
-
-            return _directData[
-                physicalStart ..
-                physicalStart + count];
-        }
-
-        pragma(inline, true)
-        const(T)[] slotSlice(size_t physicalStart, size_t count)
-            const return scope pure nothrow @safe @nogc
-        {
-            if (count == 0)
-                return null;
-
-            assert(physicalStart < Capacity);
-            assert(count <= Capacity - physicalStart);
-
-            return _directData[
-                physicalStart ..
-                physicalStart + count];
-        }
-
-        pragma(inline, true)
-        void clearVacatedSlot(size_t physicalIndex)
-            pure nothrow @safe @nogc
-        {
-            assert(physicalIndex < Capacity);
-
-            static if (elementHasIndirections!T)
-                _directData[physicalIndex] = T.init;
-        }
     }
     else
     {
@@ -135,8 +79,10 @@ private:
 
         void endLiveSlot()(size_t physicalIndex)
         {
+            assert(physicalIndex < Capacity);
+
             static if (elementHasIndirections!T)
-                clearVacatedSlot(physicalIndex);
+                _directData[physicalIndex] = T.init;
         }
     }
     else
@@ -186,28 +132,44 @@ public:
         return scope pure nothrow @safe @nogc
     {
         assert(!empty);
-        return *slotPointer(0);
+
+        static if (useDirectScalarStorage)
+            return _directData[0];
+        else
+            return *slotPointer(0);
     }
 
     ref const(T) front() const
         return scope pure nothrow @safe @nogc
     {
         assert(!empty);
-        return *slotPointer(0);
+
+        static if (useDirectScalarStorage)
+            return _directData[0];
+        else
+            return *slotPointer(0);
     }
 
     ref T back()
         return scope pure nothrow @safe @nogc
     {
         assert(!empty);
-        return *slotPointer(_length - 1);
+
+        static if (useDirectScalarStorage)
+            return _directData[_length - 1];
+        else
+            return *slotPointer(_length - 1);
     }
 
     ref const(T) back() const
         return scope pure nothrow @safe @nogc
     {
         assert(!empty);
-        return *slotPointer(_length - 1);
+
+        static if (useDirectScalarStorage)
+            return _directData[_length - 1];
+        else
+            return *slotPointer(_length - 1);
     }
 
     pragma(inline, true)
@@ -215,7 +177,11 @@ public:
         return scope pure nothrow @safe @nogc
     {
         assert(index < _length);
-        return *slotPointer(index);
+
+        static if (useDirectScalarStorage)
+            return _directData[index];
+        else
+            return *slotPointer(index);
     }
 
     pragma(inline, true)
@@ -223,21 +189,31 @@ public:
         return scope pure nothrow @safe @nogc
     {
         assert(index < _length);
-        return *slotPointer(index);
+
+        static if (useDirectScalarStorage)
+            return _directData[index];
+        else
+            return *slotPointer(index);
     }
 
     pragma(inline, true)
     T[] opSlice()
         return scope pure nothrow @safe @nogc
     {
-        return slotSlice(0, _length);
+        static if (useDirectScalarStorage)
+            return _directData[0 .. _length];
+        else
+            return slotSlice(0, _length);
     }
 
     pragma(inline, true)
     const(T)[] opSlice() const
         return scope pure nothrow @safe @nogc
     {
-        return slotSlice(0, _length);
+        static if (useDirectScalarStorage)
+            return _directData[0 .. _length];
+        else
+            return slotSlice(0, _length);
     }
 
     /**
