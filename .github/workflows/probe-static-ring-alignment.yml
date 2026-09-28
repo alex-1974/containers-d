@@ -28,14 +28,38 @@ jobs:
             id: dmd-2.111.0-linux-x86_64
             os: ubuntu-24.04
             compiler: dmd-2.111.0
+          - name: DMD 2.112.1 / Linux x86_64
+            id: dmd-2.112.1-linux-x86_64
+            os: ubuntu-24.04
+            compiler: dmd-2.112.1
+          - name: DMD 2.113.0 / Linux x86_64
+            id: dmd-2.113.0-linux-x86_64
+            os: ubuntu-24.04
+            compiler: dmd-2.113.0
           - name: LDC 1.41.0 / Linux x86_64
             id: ldc-1.41.0-linux-x86_64
             os: ubuntu-24.04
             compiler: ldc-1.41.0
-          - name: LDC latest / Linux AArch64
-            id: ldc-latest-linux-aarch64
+          - name: LDC 1.42.0 / Linux x86_64
+            id: ldc-1.42.0-linux-x86_64
+            os: ubuntu-24.04
+            compiler: ldc-1.42.0
+          - name: LDC 1.43.0 / Linux x86_64
+            id: ldc-1.43.0-linux-x86_64
+            os: ubuntu-24.04
+            compiler: ldc-1.43.0
+          - name: LDC 1.41.0 / Linux AArch64
+            id: ldc-1.41.0-linux-aarch64
             os: ubuntu-24.04-arm
-            compiler: ldc-latest
+            compiler: ldc-1.41.0
+          - name: LDC 1.42.0 / Linux AArch64
+            id: ldc-1.42.0-linux-aarch64
+            os: ubuntu-24.04-arm
+            compiler: ldc-1.42.0
+          - name: LDC 1.43.0 / Linux AArch64
+            id: ldc-1.43.0-linux-aarch64
+            os: ubuntu-24.04-arm
+            compiler: ldc-1.43.0
 
     steps:
       - name: Check out repository
