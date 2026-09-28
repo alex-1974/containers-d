@@ -247,7 +247,13 @@ nothrow
 pure
 ```
 
-whenever the required T operation permits them.
+whenever the required T operation and the current frontend permit them.
+
+In particular, move safety is compiler-qualified. Frontend 2.111 accepts some
+`__rvalue(local)` move expressions from `@safe` code that frontend 2.112+
+rejects independently of the element move constructor's own annotation.
+containers-d must follow that frontend capability and must never upgrade a
+rejected move path to `@safe` through an internal trusted bridge.
 
 The binary64 consumer gate specifically requires its hot surface to remain:
 
