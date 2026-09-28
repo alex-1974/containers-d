@@ -122,15 +122,11 @@ using OverDynamicRing =
         DynamicStorage<OverAlignedValue, capacity>>;
 
 void fill_values(std::array<std::uint64_t, value_count>& values) noexcept {
-    std::uint64_t state = 0xA0761D6478BD642FULL;
-
     for (std::size_t i = 0; i < values.size(); ++i) {
-        state ^= state << 13;
-        state ^= state >> 7;
-        state ^= state << 17;
         values[i] =
-            state ^ (static_cast<std::uint64_t>(i) *
-                     0x9E3779B97F4A7C15ULL);
+            (static_cast<std::uint64_t>(i) + 1) *
+                0x9E3779B97F4A7C15ULL ^
+            0xD6E8FEB86659FD93ULL;
     }
 }
 
