@@ -56,55 +56,55 @@ public:
     }
 
     ref T front()
-        return scope pure nothrow @safe @nogc
+        scope return pure nothrow @safe @nogc
     {
         assert(!empty);
         return _staticVectorData[0];
     }
 
     ref const(T) front() const
-        return scope pure nothrow @safe @nogc
+        scope return pure nothrow @safe @nogc
     {
         assert(!empty);
         return _staticVectorData[0];
     }
 
     ref T back()
-        return scope pure nothrow @safe @nogc
+        scope return pure nothrow @safe @nogc
     {
         assert(!empty);
         return _staticVectorData[_staticVectorLength - 1];
     }
 
     ref const(T) back() const
-        return scope pure nothrow @safe @nogc
+        scope return pure nothrow @safe @nogc
     {
         assert(!empty);
         return _staticVectorData[_staticVectorLength - 1];
     }
 
     ref T opIndex(size_t index)
-        return scope pure nothrow @safe @nogc
+        scope return pure nothrow @safe @nogc
     {
         assert(index < _staticVectorLength);
         return _staticVectorData[index];
     }
 
     ref const(T) opIndex(size_t index) const
-        return scope pure nothrow @safe @nogc
+        scope return pure nothrow @safe @nogc
     {
         assert(index < _staticVectorLength);
         return _staticVectorData[index];
     }
 
     T[] asSlice()
-        return scope pure nothrow @safe @nogc
+        scope return pure nothrow @safe @nogc
     {
         return _staticVectorData[0 .. _staticVectorLength];
     }
 
     const(T)[] asSlice() const
-        return scope pure nothrow @safe @nogc
+        scope return pure nothrow @safe @nogc
     {
         return _staticVectorData[0 .. _staticVectorLength];
     }
@@ -144,12 +144,18 @@ public:
     }
 }
 
-unittest
+version (unittest)
 {
-    struct ScalarConsumer
+    private struct ScalarStaticVectorOpsConsumer
     {
         mixin ScalarStaticVectorOps!(double, 4);
     }
+}
+
+unittest
+{
+    alias ScalarConsumer =
+        ScalarStaticVectorOpsConsumer;
 
     static assert(ScalarConsumer.sizeof ==
         4 * double.sizeof + size_t.sizeof);
