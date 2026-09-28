@@ -11,6 +11,15 @@ import std.traits : hasElaborateDestructor, hasIndirections, isNested;
 
 private enum size_t nativePointerAlignment = (void*).alignof;
 
+
+private template inlineElementIsNested(T)
+{
+    static if (is(T == struct) || is(T == class) || is(T == union))
+        enum bool inlineElementIsNested = isNested!T;
+    else
+        enum bool inlineElementIsNested = false;
+}
+
 /**
  * Injects fixed-capacity raw storage and slot access into the consuming
  * aggregate.
@@ -33,7 +42,7 @@ package(containers) mixin template InlineRawStorageOps(
     T,
     size_t Capacity,
     bool HasIndirections = hasIndirections!T,
-    bool IsNested = isNested!T,
+    bool IsNested = inlineElementIsNested!T,
     size_t NativeAlignment = nativePointerAlignment)
 {
     static assert(Capacity > 0,
