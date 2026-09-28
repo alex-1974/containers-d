@@ -34,6 +34,8 @@ private struct CopyTracked
 
 private struct SelfReferentialMove
 {
+    static int moves;
+
     int value;
     int* self;
 
@@ -52,6 +54,7 @@ private struct SelfReferentialMove
 
         rhs.value = -1;
         rhs.self = null;
+        ++moves;
     }
 
     bool valid() @safe @nogc nothrow
@@ -119,16 +122,24 @@ private void testCopyConstruction()
 
 private void testRingMoveOnlySelfReference()
 {
+    SelfReferentialMove.moves = 0;
+
     StaticRingBuffer!(SelfReferentialMove, 2) source;
 
     auto seed = SelfReferentialMove(41);
     assert(source.tryPushBack(__rvalue(seed)));
     assert(source.front.valid);
+    assert(SelfReferentialMove.moves >= 1);
+
+    const movesBeforeContainerMove =
+        SelfReferentialMove.moves;
 
     auto moved = __rvalue(source);
 
     assert(source.empty);
     assert(moved.length == 1);
+    assert(SelfReferentialMove.moves >
+        movesBeforeContainerMove);
 
     if (!moved.front.valid)
     {
@@ -143,6 +154,8 @@ private void testRingMoveOnlySelfReference()
 
 private void testLanguageMoveAndFinalAddress()
 {
+    SelfReferentialMove.moves = 0;
+
     StaticVector!(SelfReferentialMove, 2) source;
 
     auto seed = SelfReferentialMove(73);
@@ -151,13 +164,20 @@ private void testLanguageMoveAndFinalAddress()
     assert(source.length == 1);
     assert(source[0].value == 73);
     assert(source[0].valid);
-    assert(seed.value == -1);
-    assert(seed.self is null);
+    assert(SelfReferentialMove.moves >= 1);
+
+    // The exact readable state of an already-moved source object is not part
+    // of the container contract. What matters is that T's move constructor
+    // ran and the stored object is valid at its final slot address.
+    const movesBeforeContainerMove =
+        SelfReferentialMove.moves;
 
     auto moved = __rvalue(source);
 
     assert(source.empty);
     assert(moved.length == 1);
+    assert(SelfReferentialMove.moves >
+        movesBeforeContainerMove);
     assert(moved[0].value == 73);
 
     if (!moved[0].valid)
