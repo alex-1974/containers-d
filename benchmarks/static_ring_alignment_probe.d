@@ -105,16 +105,70 @@ void main()
     writeln("element-align ", OverAligned64.alignof);
     writeln("ring-align ", CurrentRing.alignof);
     writeln("ring-holder-offset ", RingHolder.ring.offsetof);
-    writeln("ring-type-contract-sufficient ",
+    writeln("ring-native-wrapper-contract-sufficient ",
         CurrentRing.alignof >= OverAligned64.alignof &&
         RingHolder.ring.offsetof % OverAligned64.alignof == 0 ? 1 : 0);
+    writeln("ring-representation-dynamic ",
+        OverAligned64.alignof > qualifiedInlineEmbeddedAlignment ? 1 : 0);
 
     RingHolder[2] ringHolders;
-    foreach (i, ref holder; ringHolders)
+    foreach (holderIndex, ref holder; ringHolders)
     {
-        writeln("ring-holder-array-", i, "-address-mod-element-align ",
+        writeln("ring-holder-array-", holderIndex,
+            "-address-mod-element-align ",
             addressMod(&holder.ring, OverAligned64.alignof));
+
+        foreach (slotIndex; 0 .. CurrentRing.capacity)
+        {
+            OverAligned64 value;
+            value.value = holderIndex * 100 + slotIndex + 1;
+            assert(holder.ring.tryPushBack(value));
+        }
+
+        foreach (logicalIndex; 0 .. holder.ring.length)
+        {
+            const address =
+                cast(size_t) &holder.ring[logicalIndex];
+            writeln("ring-holder-array-", holderIndex,
+                "-logical-", logicalIndex,
+                "-slot-mod-element-align ",
+                address % OverAligned64.alignof);
+            assert(address % OverAligned64.alignof == 0);
+        }
+
+        // Force a wrapped logical layout and re-check the exposed live slots.
+        holder.ring.popFront();
+        OverAligned64 wrapped;
+        wrapped.value = holderIndex * 100 + 99;
+        assert(holder.ring.tryPushBack(wrapped));
+
+        foreach (logicalIndex; 0 .. holder.ring.length)
+        {
+            const address =
+                cast(size_t) &holder.ring[logicalIndex];
+            writeln("ring-holder-array-", holderIndex,
+                "-wrapped-logical-", logicalIndex,
+                "-slot-mod-element-align ",
+                address % OverAligned64.alignof);
+            assert(address % OverAligned64.alignof == 0);
+        }
     }
+
+    CurrentRing[2] ringArray;
+    foreach (ringIndex, ref ring; ringArray)
+    {
+        OverAligned64 value;
+        value.value = ringIndex + 1;
+        assert(ring.tryPushBack(value));
+
+        const address = cast(size_t) &ring.front;
+        writeln("ring-array-", ringIndex,
+            "-front-slot-mod-element-align ",
+            address % OverAligned64.alignof);
+        assert(address % OverAligned64.alignof == 0);
+    }
+
+    writeln("ring-slot-sufficient 1");
 
     writeln("forced-native-align ", ForcedNativeStorage.alignof);
     writeln("forced-native-holder-offset ",
