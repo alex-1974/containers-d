@@ -1,6 +1,8 @@
 module app;
 
+import containers : StaticRingBuffer;
 import containers.static_vector : StaticVector;
+import std.stdio : stderr;
 
 private struct CopyTracked
 {
@@ -115,6 +117,30 @@ private void testCopyConstruction()
     assert(CopyTracked.destroyed > 0);
 }
 
+private void testRingMoveOnlySelfReference()
+{
+    StaticRingBuffer!(SelfReferentialMove, 2) source;
+
+    auto seed = SelfReferentialMove(41);
+    assert(source.tryPushBack(__rvalue(seed)));
+    assert(source.front.valid);
+
+    auto moved = __rvalue(source);
+
+    assert(source.empty);
+    assert(moved.length == 1);
+
+    if (!moved.front.valid)
+    {
+        stderr.writefln(
+            "StaticRingBuffer self-ref mismatch: value@%s self=%s",
+            cast(void*) &moved.front.value,
+            cast(void*) moved.front.self);
+    }
+
+    assert(moved.front.valid);
+}
+
 private void testLanguageMoveAndFinalAddress()
 {
     StaticVector!(SelfReferentialMove, 2) source;
@@ -133,6 +159,15 @@ private void testLanguageMoveAndFinalAddress()
     assert(source.empty);
     assert(moved.length == 1);
     assert(moved[0].value == 73);
+
+    if (!moved[0].valid)
+    {
+        stderr.writefln(
+            "StaticVector self-ref mismatch: value@%s self=%s",
+            cast(void*) &moved[0].value,
+            cast(void*) moved[0].self);
+    }
+
     assert(moved[0].valid);
 
     moved.clear();
@@ -161,6 +196,7 @@ private void testOverAlignmentWhenEmbedded()
 void main()
 {
     testCopyConstruction();
+    testRingMoveOnlySelfReference();
     testLanguageMoveAndFinalAddress();
     testOverAlignmentWhenEmbedded();
 }
