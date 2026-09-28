@@ -112,6 +112,73 @@ std::uint64_t bench_pointer_indices(
 }
 
 extern "C" __attribute__((noinline))
+std::uint64_t bench_unrolled_pointer4(
+    const std::uint64_t* base, const std::uint8_t* indices,
+    std::size_t rounds) noexcept
+{
+    std::uint64_t checksum = 0;
+    std::size_t round = 0;
+    while (round < rounds)
+    {
+        const auto* cursor = indices;
+        const auto* end = indices + index_count;
+        while (cursor != end)
+        {
+            checksum += base[cursor[0]];
+            checksum += base[cursor[1]];
+            checksum += base[cursor[2]];
+            checksum += base[cursor[3]];
+            cursor += 4;
+        }
+        ++round;
+    }
+    return checksum;
+}
+
+extern "C" __attribute__((noinline))
+std::uint64_t bench_size_indices(
+    const std::uint64_t* base, const std::size_t* indices,
+    std::size_t rounds) noexcept
+{
+    std::uint64_t checksum = 0;
+    std::size_t round = 0;
+    while (round < rounds)
+    {
+        std::size_t i = 0;
+        while (i < index_count)
+        {
+            checksum += base[indices[i]];
+            ++i;
+        }
+        ++round;
+    }
+    return checksum;
+}
+
+extern "C" __attribute__((noinline))
+std::uint64_t bench_size_unrolled4(
+    const std::uint64_t* base, const std::size_t* indices,
+    std::size_t rounds) noexcept
+{
+    std::uint64_t checksum = 0;
+    std::size_t round = 0;
+    while (round < rounds)
+    {
+        std::size_t i = 0;
+        while (i < index_count)
+        {
+            checksum += base[indices[i]];
+            checksum += base[indices[i + 1]];
+            checksum += base[indices[i + 2]];
+            checksum += base[indices[i + 3]];
+            i += 4;
+        }
+        ++round;
+    }
+    return checksum;
+}
+
+extern "C" __attribute__((noinline))
 std::uint64_t bench_fixed_count(
     const std::uint64_t* base, const std::uint8_t* indices,
     std::size_t rounds) noexcept
@@ -164,8 +231,11 @@ int main(int argc, char** argv)
 
     std::array<Value, value_count> values{};
     std::array<std::uint8_t, index_count> indices{};
+    std::array<std::size_t, index_count> size_indices{};
     fill_values(values);
     fill_indices(indices);
+    for (std::size_t i = 0; i < indices.size(); ++i)
+        size_indices[i] = indices[i];
 
     const auto rounds =
         static_cast<std::size_t>(std::strtoull(argv[2], nullptr, 10));
@@ -182,6 +252,12 @@ int main(int argc, char** argv)
         checksum = bench_while_scalar(scalar_base, indices.data(), indices.size(), rounds);
     else if (variant == "pointer-indices")
         checksum = bench_pointer_indices(scalar_base, indices.data(), indices.size(), rounds);
+    else if (variant == "unrolled-pointer4")
+        checksum = bench_unrolled_pointer4(scalar_base, indices.data(), rounds);
+    else if (variant == "size-indices")
+        checksum = bench_size_indices(scalar_base, size_indices.data(), rounds);
+    else if (variant == "size-unrolled4")
+        checksum = bench_size_unrolled4(scalar_base, size_indices.data(), rounds);
     else if (variant == "fixed-count")
         checksum = bench_fixed_count(scalar_base, indices.data(), rounds);
     else if (variant == "unrolled4")
