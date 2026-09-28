@@ -149,14 +149,31 @@ Research-only refactoring/probes:
 
 No advanced customization surface is exported in this phase.
 
-### M4.3 — StaticVector family proof
+### M4.3 — StaticVector family proof and promotion — qualified candidate
 
-- implement/prototype `StaticVector!(T, Capacity)`;
-- compare directly with geo-d and geo3-d `ExpansionBuffer`;
-- test a thin domain wrapper over StaticVector;
-- qualify DMD/LDC runtime, generated code, compile time and code size;
-- promote only if the generic family core is not materially worse than the
-  consumer-local baseline.
+Tracking: issues #25 and #34.  
+Research PR: #33. Promotion PR: #35.
+
+Completed evidence:
+
+- implemented and qualified `StaticVector!(T, Capacity)`;
+- direct ExpansionBuffer mechanics are effectively zero-cost on DMD 2.111 and
+  instruction-identical on LDC 1.41;
+- representative exact-expansion algorithm paths are qualified;
+- real geo-d and independent geo3-d consumer branches preserve domain-owned
+  `ExpansionBuffer` semantics through compile-time composition;
+- DMD real-consumer hot paths are instruction-identical to local baselines;
+- non-trivial copy/move/destruction, over-alignment, GC reachability, DIP1000
+  borrows and adversarial sequence semantics are qualified;
+- the six-compiler promotion matrix and Linux ARM64 / Windows x64 / macOS Intel
+  / macOS ARM64 portability matrix pass;
+- API-matched build-cost evidence shows the scalar StaticVector candidate is
+  smaller in object/text size than an equivalent direct implementation.
+
+The candidate stable type is exported from the package root in the promotion
+branch. The research-only scalar composition mixin remains outside the stable
+API until materially different consumer evidence justifies a public advanced
+customization mechanism.
 
 ### M4.4 — Ring family factoring proof
 
