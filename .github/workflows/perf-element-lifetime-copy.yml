@@ -66,12 +66,12 @@ jobs:
           ROUNDS=64
 
           emplace=$("$D" emplace "$ROUNDS" | awk '{print $2}')
-          direct=$("$D" direct "$ROUNDS" | awk '{print $2}')
+          fast=$("$D" fast "$ROUNDS" | awk '{print $2}')
           cpp=$("$CPP" "$ROUNDS" | awk '{print $2}')
 
-          echo "emplace=$emplace direct=$direct cpp=$cpp"
-          test "$emplace" = "$direct"
-          test "$direct" = "$cpp"
+          echo "emplace=$emplace fast=$fast cpp=$cpp"
+          test "$emplace" = "$fast"
+          test "$fast" = "$cpp"
 
       - name: Measure retired instructions
         shell: bash
@@ -97,7 +97,7 @@ jobs:
           }
 
           measure_d emplace
-          measure_d direct
+          measure_d fast
 
           cpp_checksum=$("$CPP" "$ROUNDS" | awk '{print $2}')
           valgrind --tool=callgrind --collect-atstart=no             --toggle-collect=bench_cpp             --callgrind-out-file=build/element-copy/callgrind-cpp.out             "$CPP" "$ROUNDS" >/dev/null 2>&1
