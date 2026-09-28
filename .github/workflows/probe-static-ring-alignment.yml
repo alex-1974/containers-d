@@ -1,0 +1,63 @@
+name: Static Ring Alignment Probe
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - benchmarks/static_ring_alignment_probe.d
+      - source/containers/ring_buffer.d
+      - source/containers/internal/inline_storage.d
+      - .github/workflows/probe-static-ring-alignment.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  alignment:
+    name: Alignment / ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - dmd-2.111.0
+          - ldc-1.41.0
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ${{ matrix.compiler }}
+
+      - name: Build probe
+        shell: bash
+        run: |
+          mkdir -p build/alignment-probe
+          "$DC" \
+            -Isource \
+            -of=build/alignment-probe/static-ring-alignment-probe \
+            benchmarks/static_ring_alignment_probe.d \
+            source/containers/ring_buffer.d \
+            source/containers/internal/element_lifetime.d \
+            source/containers/internal/inline_storage.d
+
+      - name: Run probe
+        shell: bash
+        run: |
+          build/alignment-probe/static-ring-alignment-probe | tee build/alignment-probe/result.txt
+          echo '### ${{ matrix.compiler }} — static ring alignment' >> "$GITHUB_STEP_SUMMARY"
+          echo >> "$GITHUB_STEP_SUMMARY"
+          sed 's/^/    /' build/alignment-probe/result.txt >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload probe evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: static-ring-alignment-${{ matrix.compiler }}
+          path: build/alignment-probe/result.txt
+          if-no-files-found: error

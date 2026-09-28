@@ -64,9 +64,23 @@ jobs:
         shell: bash
         run: DFLAGS="-preview=dip1000" dub run --root=tests/consumer --compiler="$DC" --force
 
+
+      - name: StaticVector research consumer
+        shell: bash
+        run: dub run --root=tests/research-static-vector-consumer --compiler="$DC" --force
+
+      - name: StaticVector research consumer with DIP1000
+        shell: bash
+        run: DFLAGS="-preview=dip1000" dub run --root=tests/research-static-vector-consumer --compiler="$DC" --force
+
       - name: Runtime GC reachability
         shell: bash
         run: dub run --root=tests/gc-reachability --compiler="$DC" --force
+
+
+      - name: Inline storage GC reachability
+        shell: bash
+        run: dub run --root=tests/inline-storage-gc --compiler="$DC" --force
 
       - name: DIP1000 borrowed-slice negative compile
         shell: bash
