@@ -46,14 +46,11 @@ private alias OverRing = StaticRingBuffer!(OverAlignedValue, capacity);
 private void fillValues(ref ulong[valueCount] values)
     @safe @nogc nothrow
 {
-    ulong state = 0xA076_1D64_78BD_642FUL;
-
     foreach (i, ref value; values)
     {
-        state ^= state << 13;
-        state ^= state >> 7;
-        state ^= state << 17;
-        value = state ^ (cast(ulong) i * 0x9E37_79B9_7F4A_7C15UL);
+        value =
+            (cast(ulong) i + 1) * 0x9E37_79B9_7F4A_7C15UL ^
+            0xD6E8_FEB8_6659_FD93UL;
     }
 }
 
