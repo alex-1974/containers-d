@@ -7,7 +7,8 @@
  */
 module containers.internal.element_lifetime;
 
-import std.traits : hasElaborateDestructor, hasIndirections;
+import core.lifetime : copyEmplace;
+import std.traits : hasElaborateDestructor, hasIndirections, Unqual;
 
 /**
  * Whether T can be copy-constructed from an lvalue T using the language
@@ -81,6 +82,43 @@ package(containers) mixin template EndElementLifetimeOps(
 
         static if (NeedsDestroy)
             destroy!false(*slot);
+    }
+}
+
+/**
+ * Injects copy construction into one uninitialized T slot.
+ *
+ * For the qualified DMD/x86_64 hot path, simple unqualified structs without a
+ * copy constructor or postblit use the same semantic branch as
+ * core.lifetime.copyEmplace, but express the fixed-size blit locally so DMD can
+ * lower it without an out-of-line memcpy. All other types delegate to
+ * copyEmplace, preserving language copy-construction semantics.
+ */
+package(containers) mixin template CopyEmplaceOps(
+    T,
+    bool PreferLocalSimpleCopy)
+{
+    private static T* copyEmplaceConstruct(
+        T* target,
+        ref T source) @trusted
+    {
+        assert(target !is null);
+
+        static if (PreferLocalSimpleCopy &&
+            is(T == Unqual!T) &&
+            is(T == struct) &&
+            !__traits(hasPostblit, T) &&
+            !__traits(hasCopyConstructor, T))
+        {
+            *cast(ubyte[T.sizeof]*) target =
+                *cast(ubyte[T.sizeof]*) &source;
+        }
+        else
+        {
+            copyEmplace(source, *target);
+        }
+
+        return target;
     }
 }
 
