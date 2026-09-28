@@ -75,12 +75,14 @@ private:
     }
 
 public:
+    pragma(inline, true)
     @property size_t length() const
         pure nothrow @safe @nogc
     {
         return _length;
     }
 
+    pragma(inline, true)
     @property bool empty() const
         pure nothrow @safe @nogc
     {
@@ -121,6 +123,7 @@ public:
         return *slotPointer(_length - 1);
     }
 
+    pragma(inline, true)
     ref T opIndex(size_t index)
         return scope pure nothrow @safe @nogc
     {
@@ -128,6 +131,7 @@ public:
         return *slotPointer(index);
     }
 
+    pragma(inline, true)
     ref const(T) opIndex(size_t index) const
         return scope pure nothrow @safe @nogc
     {
@@ -157,6 +161,7 @@ public:
      * provided separately so the hot path need not pay a full-capacity branch
      * after assertions are removed.
      */
+    pragma(inline, true)
     void pushBack(U)(auto ref U value)
     if (is(Unqual!U == T) &&
         (
@@ -219,6 +224,7 @@ public:
         endLiveSlot!()(_length);
     }
 
+    pragma(inline, true)
     void clear()()
     {
         static if (elementNeedsDestruction!T ||
