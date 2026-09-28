@@ -242,3 +242,111 @@ geo-d / geo3-d
 
 The generic family should remove duplicated mechanics, not erase useful
 domain vocabulary.
+
+## Real consumer proofs
+
+M4.3 now has two independent real consumers in addition to the synthetic
+mechanics and algorithm gates.
+
+### geo-d
+
+Research PR: `alex-1974/geo-d#44`.
+
+An owning `StaticVector` wrapper was functionally correct but changed DMD
+inlining enough to regress measured real paths by about 0.85% to 2.85%.
+`alias this` forwarding was also rejected because the required member/operator
+surface was not transparent on the baseline compilers.
+
+The successful form composes the research-only scalar mechanics directly into
+geo-d's own `ExpansionBuffer` domain type:
+
+```d
+struct ExpansionBuffer(size_t Capacity)
+if (Capacity > 0)
+{
+    mixin ScalarStaticVectorOps!(double, Capacity);
+
+    void append(double value)
+        pure nothrow @safe @nogc
+    {
+        assert(isFinite(value));
+        pushBack(value);
+    }
+}
+```
+
+Complete geo-d CI passes on DMD 2.111, LDC 1.41 and both rolling canaries.
+On DMD 2.111, branch-vs-develop Callgrind is instruction-identical for
+scaleExpansion 2->4, fastExpansionSum 4+4, exact collinear orientation and
+exact near orientation.
+
+On LDC 1.41, scale and collinear orientation are identical; near orientation
+is -2 Ir/op and the 4+4 expansion sum is +2 Ir/op.
+
+### geo3-d
+
+Research PR: `alex-1974/geo3-d#29`.
+
+geo3-d independently duplicated the same fixed-inline ExpansionBuffer
+mechanics inside the robust Orientation3 expansion backend. It uses the same
+`ScalarStaticVectorOps!(double, Capacity)` composition.
+
+Complete ordinary geo3-d CI passes on DMD 2.111 and LDC 1.41.
+
+Real branch-vs-develop DMD measurements are instruction-identical for
+scaleExpansion 2->4, fastExpansionSum 4+4, exact coplanar Orientation3 and
+exact near Orientation3.
+
+The Orientation3 backend exercises intermediate `ExpansionBuffer!32` values,
+so this is also a larger-capacity consumer proof.
+
+On LDC 1.41, scale and both Orientation3 paths are instruction-identical.
+The 4+4 expansion sum again differs by exactly +2 Ir/op.
+
+### Repeated LDC +2 Ir/op observation
+
+The same +2 retired instructions per 4+4 expansion-sum call appear
+independently in geo-d and geo3-d. This is reproducible compiler/code-shape
+evidence, but it remains only two instructions per call and is not accompanied
+by a demonstrated end-to-end workload regression.
+
+M4.3 therefore deliberately does not add an LDC-only policy or compiler
+version branch. Doing so would be speculative over-optimization.
+
+## M4.3 architecture conclusion
+
+The strongest successful form is consumer-owned semantic type plus typed
+compile-time composition of generic container mechanics:
+
+```text
+ScalarStaticVectorOps!(double,N)
+        |
+        +--------------------+
+        |                    |
+geo-d ExpansionBuffer   geo3-d ExpansionBuffer
+```
+
+The consumer owns domain semantics and vocabulary. containers-d owns the
+generic fixed-sequence mechanics. D generates the mechanics in the consumer
+scope, avoiding the DMD module/wrapper penalties measured in rejected forms.
+
+There is no runtime policy object, virtual dispatch, extra owning wrapper or
+allocation, and no measured DMD hot-path cost in either real consumer.
+
+This is direct evidence for the original container-family hypothesis.
+
+## Remaining M4.3 work
+
+The feasibility question is now answered. Remaining work is production/API
+qualification:
+
+- finalize the stable public `StaticVector!(T,N)` surface;
+- finish nontrivial-T copy/move/destruction qualification;
+- add StaticVector-specific borrowed-slice/DIP1000 negative tests;
+- measure template-instantiation/build-size cost;
+- decide whether consumer composition becomes public advanced API, remains
+  semi-internal, or stays an implementation mechanism;
+- choose production naming for any composition primitive;
+- decide released dependency/versioning after containers-d promotion.
+
+`ScalarStaticVectorOps` remains research-only until those decisions are made.
