@@ -127,7 +127,7 @@ private void fillValues(ref double[valueCount] values)
 }
 
 private ulong mixDouble(double value)
-    pure nothrow @safe @nogc
+    pure nothrow @trusted @nogc
 {
     return *cast(const(ulong)*) &value;
 }
@@ -168,52 +168,89 @@ if (Capacity > 0)
     return checksum;
 }
 
-mixin template DefineProbe(size_t Capacity)
+static assert(
+    BaselineExpansionBuffer!1.sizeof ==
+    CandidateExpansionBuffer!1.sizeof);
+static assert(
+    BaselineExpansionBuffer!2.sizeof ==
+    CandidateExpansionBuffer!2.sizeof);
+static assert(
+    BaselineExpansionBuffer!3.sizeof ==
+    CandidateExpansionBuffer!3.sizeof);
+static assert(
+    BaselineExpansionBuffer!4.sizeof ==
+    CandidateExpansionBuffer!4.sizeof);
+
+pragma(inline, false)
+extern(C) ulong bench_baseline_1(
+    scope const double[] values,
+    size_t rounds)
 {
-    alias Baseline = BaselineExpansionBuffer!Capacity;
-    alias Candidate = CandidateExpansionBuffer!Capacity;
-
-    static assert(Baseline.sizeof == Candidate.sizeof);
-
-    pragma(inline, false)
-    extern(C) ulong bench_baseline(
-        scope const double[] values,
-        size_t rounds)
-    {
-        return runProbe!(Baseline, Capacity)(
-            values,
-            rounds);
-    }
-
-    pragma(inline, false)
-    extern(C) ulong bench_candidate(
-        scope const double[] values,
-        size_t rounds)
-    {
-        return runProbe!(Candidate, Capacity)(
-            values,
-            rounds);
-    }
+    return runProbe!(BaselineExpansionBuffer!1, 1)(
+        values, rounds);
 }
 
-private struct Probe1
+pragma(inline, false)
+extern(C) ulong bench_candidate_1(
+    scope const double[] values,
+    size_t rounds)
 {
-    mixin DefineProbe!1;
+    return runProbe!(CandidateExpansionBuffer!1, 1)(
+        values, rounds);
 }
 
-private struct Probe2
+pragma(inline, false)
+extern(C) ulong bench_baseline_2(
+    scope const double[] values,
+    size_t rounds)
 {
-    mixin DefineProbe!2;
+    return runProbe!(BaselineExpansionBuffer!2, 2)(
+        values, rounds);
 }
 
-private struct Probe3
+pragma(inline, false)
+extern(C) ulong bench_candidate_2(
+    scope const double[] values,
+    size_t rounds)
 {
-    mixin DefineProbe!3;
+    return runProbe!(CandidateExpansionBuffer!2, 2)(
+        values, rounds);
 }
 
-private struct Probe4
+pragma(inline, false)
+extern(C) ulong bench_baseline_3(
+    scope const double[] values,
+    size_t rounds)
 {
-    mixin DefineProbe!4;
+    return runProbe!(BaselineExpansionBuffer!3, 3)(
+        values, rounds);
+}
+
+pragma(inline, false)
+extern(C) ulong bench_candidate_3(
+    scope const double[] values,
+    size_t rounds)
+{
+    return runProbe!(CandidateExpansionBuffer!3, 3)(
+        values, rounds);
+}
+
+pragma(inline, false)
+extern(C) ulong bench_baseline_4(
+    scope const double[] values,
+    size_t rounds)
+{
+    return runProbe!(BaselineExpansionBuffer!4, 4)(
+        values, rounds);
+}
+
+pragma(inline, false)
+extern(C) ulong bench_candidate_4(
+    scope const double[] values,
+    size_t rounds)
+{
+    return runProbe!(CandidateExpansionBuffer!4, 4)(
+        values, rounds);
 }
 
 private ulong runSelected(
@@ -222,27 +259,30 @@ private ulong runSelected(
     scope const double[] values,
     size_t rounds)
 {
-    final switch (capacity)
+    switch (capacity)
     {
         case 1:
             return variant == "baseline"
-                ? Probe1.bench_baseline(values, rounds)
-                : Probe1.bench_candidate(values, rounds);
+                ? bench_baseline_1(values, rounds)
+                : bench_candidate_1(values, rounds);
 
         case 2:
             return variant == "baseline"
-                ? Probe2.bench_baseline(values, rounds)
-                : Probe2.bench_candidate(values, rounds);
+                ? bench_baseline_2(values, rounds)
+                : bench_candidate_2(values, rounds);
 
         case 3:
             return variant == "baseline"
-                ? Probe3.bench_baseline(values, rounds)
-                : Probe3.bench_candidate(values, rounds);
+                ? bench_baseline_3(values, rounds)
+                : bench_candidate_3(values, rounds);
 
         case 4:
             return variant == "baseline"
-                ? Probe4.bench_baseline(values, rounds)
-                : Probe4.bench_candidate(values, rounds);
+                ? bench_baseline_4(values, rounds)
+                : bench_candidate_4(values, rounds);
+
+        default:
+            assert(0, "unsupported capacity");
     }
 }
 
