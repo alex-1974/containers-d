@@ -6,10 +6,12 @@
  */
 module containers.internal.inline_storage;
 
+import containers.internal.target_capabilities :
+    nativePointerAlignment,
+    qualifiedInlineEmbeddedAlignment;
 import std.traits : hasElaborateDestructor, hasIndirections, isNested;
 
 private alias NativePointer = void*;
-private enum size_t nativePointerAlignment = NativePointer.alignof;
 
 /**
  * Raw storage payload with a compiler-visible GC scan shape.
@@ -49,16 +51,23 @@ private union InlineRawStoragePayload(
  * Provides Capacity aligned raw slots for T without deciding which slots
  * currently contain live T objects.
  *
- * Ordinary alignments use the direct payload base and do not reserve padding.
- * For T aligned more strongly than the native pointer alignment, the storage
- * reserves T.alignof - 1 bytes of slack and derives an aligned slot base from
- * the actual runtime address. This avoids relying on an enclosing aggregate to
- * propagate over-alignment.
+ * The representation is selected at compile time from qualified
+ * compiler/target capabilities:
+ *
+ * - when T.alignof is known to propagate correctly through aggregate
+ *   embedding, the payload uses the native aligned direct base;
+ * - otherwise the storage reserves T.alignof - 1 bytes of slack and derives
+ *   an aligned slot base from the actual runtime address.
+ *
+ * This deliberately permits different machine representations behind the same
+ * semantic contract. The ordinary/native-alignment case never pays the dynamic
+ * alignment cost.
  *
  * For indirection-bearing T, .init starts from a zeroed GC-visible
  * representation. Dynamically shifted slots use a conservative pointer-word
  * scan shape so every possible pointer-bearing slot location remains visible
- * to the GC.
+ * to the GC. Native direct-base storage retains the exact T[Capacity] scan
+ * shape.
  */
 package(containers) struct InlineRawStorage(T, size_t Capacity)
 {
@@ -71,12 +80,13 @@ package(containers) struct InlineRawStorage(T, size_t Capacity)
 
     enum size_t capacity = Capacity;
 
-private:
-    enum bool needsDynamicAlignment =
-        T.alignof > nativePointerAlignment;
+    /// Exposes the selected representation to package-internal qualification.
+    package(containers) enum bool usesDynamicAlignment =
+        T.alignof > qualifiedInlineEmbeddedAlignment;
 
+private:
     enum size_t alignmentSlack =
-        needsDynamicAlignment ? T.alignof - 1 : 0;
+        usesDynamicAlignment ? T.alignof - 1 : 0;
 
     static assert(
         Capacity <= (size_t.max - alignmentSlack) / T.sizeof,
@@ -89,14 +99,13 @@ private:
         T,
         Capacity,
         rawByteLength,
-        needsDynamicAlignment);
+        usesDynamicAlignment);
 
-    static if (needsDynamicAlignment)
+    static if (usesDynamicAlignment)
     {
-        // Deliberately do not over-align the storage wrapper itself. DMD 2.111
-        // does not reliably propagate such alignment when the type is embedded.
-        // The extra bytes below make the slot base independent of wrapper
-        // placement.
+        // Do not rely on wrapper over-alignment for compiler/target
+        // combinations that have not qualified it. The extra bytes make the
+        // actual slot base independent of wrapper placement.
         static if (hasIndirections!T)
             Payload _payload = Payload.init;
         else
@@ -104,7 +113,8 @@ private:
     }
     else
     {
-        // Native alignments can keep the compact direct-base representation.
+        // Qualified native embedding keeps the compact direct-base
+        // representation with no runtime alignment arithmetic.
         static if (hasIndirections!T)
             align(T.alignof) Payload _payload = Payload.init;
         else
@@ -113,7 +123,7 @@ private:
 
     size_t slotBaseOffset() const @safe @nogc nothrow
     {
-        static if (!needsDynamicAlignment)
+        static if (!usesDynamicAlignment)
         {
             return 0;
         }
@@ -241,6 +251,7 @@ unittest
     static assert(Storage.capacity == 4);
     static assert(Storage.sizeof == int.sizeof * 4);
     static assert(Storage.alignof >= int.alignof);
+    static assert(!Storage.usesDynamicAlignment);
     static assert(!hasIndirections!Storage);
 
     assert(storage.slotPointer(0) !is null);
@@ -256,6 +267,7 @@ unittest
     static assert(hasIndirections!WithIndirection);
     static assert(hasIndirections!Storage);
     static assert(Storage.alignof >= WithIndirection.alignof);
+    static assert(!Storage.usesDynamicAlignment);
 
     Storage storage;
 
@@ -290,11 +302,18 @@ unittest
 
     Holder holder;
 
-    // The wrapper itself intentionally needs no 64-byte alignment. Every slot
-    // must nevertheless be aligned from the actual embedded address.
-    static assert(Storage.sizeof >=
-        OverAligned.sizeof * Storage.capacity +
-        OverAligned.alignof - 1);
+    static if (Storage.usesDynamicAlignment)
+    {
+        static assert(Storage.sizeof >=
+            OverAligned.sizeof * Storage.capacity +
+            OverAligned.alignof - 1);
+    }
+    else
+    {
+        static assert(Storage.alignof >= OverAligned.alignof);
+        static assert(Storage.sizeof ==
+            OverAligned.sizeof * Storage.capacity);
+    }
 
     foreach (i; 0 .. Storage.capacity)
     {
@@ -324,8 +343,8 @@ unittest
         assert(address % OverAlignedIndirection.alignof == 0);
     }
 
-    // The whole payload starts zeroed because its conservative pointer-word
-    // scan shape must never expose arbitrary stale roots.
+    // Both representations start from a zeroed GC-visible payload. Dynamic
+    // alignment uses a conservative scan shape; native alignment uses T[].
     foreach (value; holder.storage._payload.bytes)
         assert(value == 0);
 }

@@ -8,6 +8,7 @@ on:
       - benchmarks/static_ring_alignment_probe.d
       - source/containers/ring_buffer.d
       - source/containers/internal/inline_storage.d
+      - source/containers/internal/target_capabilities.d
       - .github/workflows/probe-static-ring-alignment.yml
   workflow_dispatch:
 
@@ -16,15 +17,25 @@ permissions:
 
 jobs:
   alignment:
-    name: Alignment / ${{ matrix.compiler }}
-    runs-on: ubuntu-24.04
+    name: Alignment / ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
 
     strategy:
       fail-fast: false
       matrix:
-        compiler:
-          - dmd-2.111.0
-          - ldc-1.41.0
+        include:
+          - name: DMD 2.111.0 / Linux x86_64
+            id: dmd-2.111.0-linux-x86_64
+            os: ubuntu-24.04
+            compiler: dmd-2.111.0
+          - name: LDC 1.41.0 / Linux x86_64
+            id: ldc-1.41.0-linux-x86_64
+            os: ubuntu-24.04
+            compiler: ldc-1.41.0
+          - name: LDC latest / Linux AArch64
+            id: ldc-latest-linux-aarch64
+            os: ubuntu-24.04-arm
+            compiler: ldc-latest
 
     steps:
       - name: Check out repository
@@ -34,6 +45,15 @@ jobs:
         uses: dlang-community/setup-dlang@v2
         with:
           compiler: ${{ matrix.compiler }}
+
+      - name: Platform and compiler information
+        shell: bash
+        run: |
+          echo "RUNNER_OS=$RUNNER_OS"
+          echo "RUNNER_ARCH=$RUNNER_ARCH"
+          uname -a || true
+          echo "DC=$DC"
+          "$DC" --version
 
       - name: Build probe
         shell: bash
@@ -45,19 +65,20 @@ jobs:
             benchmarks/static_ring_alignment_probe.d \
             source/containers/ring_buffer.d \
             source/containers/internal/element_lifetime.d \
-            source/containers/internal/inline_storage.d
+            source/containers/internal/inline_storage.d \
+            source/containers/internal/target_capabilities.d
 
       - name: Run probe
         shell: bash
         run: |
           build/alignment-probe/static-ring-alignment-probe | tee build/alignment-probe/result.txt
-          echo '### ${{ matrix.compiler }} — static ring alignment' >> "$GITHUB_STEP_SUMMARY"
+          echo '### ${{ matrix.name }} — static ring alignment' >> "$GITHUB_STEP_SUMMARY"
           echo >> "$GITHUB_STEP_SUMMARY"
           sed 's/^/    /' build/alignment-probe/result.txt >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload probe evidence
         uses: actions/upload-artifact@v4
         with:
-          name: static-ring-alignment-${{ matrix.compiler }}
+          name: static-ring-alignment-${{ matrix.id }}
           path: build/alignment-probe/result.txt
           if-no-files-found: error
