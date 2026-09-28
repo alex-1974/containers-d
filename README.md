@@ -16,10 +16,16 @@ Install the published package through the DUB registry:
 dub add containers-d@0.1.0
 ```
 
-The package root is:
+The published `v0.1.0` package root contains the ring-buffer family:
 
 ```d
 import containers : RingBuffer, StaticRingBuffer;
+```
+
+The current unreleased development branch additionally exports:
+
+```d
+import containers : StaticVector;
 ```
 
 ## Compatibility
@@ -34,10 +40,48 @@ Normal development is continuously checked with DMD 2.111 and LDC 1.41. The
 v0.1 release gate additionally qualifies DMD 2.112/2.113 and LDC 1.42/1.43 and
 runs portability jobs on Linux, Windows and macOS.
 
-Both public buffers are bounded, single-threaded containers. Nested/local struct
-element types carrying an outer context are deliberately not admitted in the
-v0.1 API; issue #10 owns research into that category. Concurrent SPSC/MPSC/MPMC
-containers, if added later, are separate type families.
+The public containers are single-threaded. Nested/local struct element types
+carrying an outer context are deliberately not admitted where their hidden
+context/lifetime contract is not yet qualified; issue #10 owns research into
+that category. Concurrent SPSC/MPSC/MPMC containers, if added later, are
+separate type families.
+
+## Static vector
+
+The unreleased development branch adds
+`StaticVector!(T, Capacity)`: a compile-time fixed-capacity, runtime-length
+contiguous vector with inline storage.
+
+```d
+import containers : StaticVector;
+
+StaticVector!(int, 4) values;
+
+values.pushBack(10);
+values.pushBack(20);
+
+assert(values.length == 2);
+assert(values.front == 10);
+assert(values.back == 20);
+assert(values[] == [10, 20]);
+
+values.popBack();
+assert(values[] == [10]);
+```
+
+`pushBack` is the precondition-based hot-path operation and requires spare
+capacity. `tryPushBack` is the checked non-overwriting form and returns
+`false` when full.
+
+`vector[]` is a borrowed view of exactly the live contiguous prefix. It aliases
+the vector's inline storage and must not outlive the owner.
+
+The vector itself performs no backing allocation. Element construction,
+destruction or user-defined operations may have their own allocation behavior.
+Scalar element types use an automatically selected direct inline representation;
+non-trivial types use the qualified lifetime/storage path for destruction, GC
+visibility and alignment. These are implementation choices rather than public
+policy parameters.
 
 ## Ring buffers
 
@@ -122,10 +166,10 @@ stale conservative roots.
 
 ## Direction
 
-The fixed- and runtime-capacity ring-buffer families are implemented and their
-current hot paths have been qualified on the baseline DMD/LDC toolchains.
-v0.1.0 intentionally releases this narrow family before admitting another
-container abstraction.
+The fixed- and runtime-capacity ring-buffer families are released in v0.1.0.
+The next qualified development candidate is `StaticVector!(T, Capacity)`,
+derived from real geo-d/geo3-d consumers and qualified for runtime behavior,
+lifetime safety, build cost and portability before package-root promotion.
 
 Future candidates include:
 
