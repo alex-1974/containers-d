@@ -90,6 +90,25 @@ private T* copyEmplaceCopy(T)(
     return target;
 }
 
+pragma(inline, true)
+private T* localBlitCopy(T)(
+    T* target,
+    ref T source) @trusted @nogc nothrow
+if (is(T == struct) &&
+    !__traits(hasPostblit, T) &&
+    !__traits(hasCopyConstructor, T))
+{
+    assert(target !is null);
+
+    // Mirrors core.lifetime.copyEmplace's simple-struct branch, but expresses
+    // the fixed-size blit locally so DMD can lower it without an out-of-line
+    // memcpy call.
+    *cast(ubyte[T.sizeof]*) target =
+        *cast(ubyte[T.sizeof]*) &source;
+
+    return target;
+}
+
 private T* emplaceCopy(T)(
     T* target,
     ref T source)
@@ -114,6 +133,12 @@ private void verifySemantics()
         auto source = PlainValue(11);
 
         auto placed = copyEmplaceCopy(target, source);
+        assert(placed is target);
+        assert(placed.checksum == source.checksum);
+        assert(source.a == 11);
+        destroy!false(*placed);
+
+        placed = localBlitCopy(target, source);
         assert(placed is target);
         assert(placed.checksum == source.checksum);
         assert(source.a == 11);
@@ -246,12 +271,40 @@ extern(C) ulong bench_copyemplace(
     return checksum;
 }
 
+pragma(inline, false)
+extern(C) ulong bench_localblit(
+    PlainValue* values,
+    size_t count,
+    size_t rounds)
+{
+    align(PlainValue.alignof) ubyte[PlainValue.sizeof] raw = void;
+    auto target = rawTarget!PlainValue(raw);
+
+    ulong checksum;
+    size_t round;
+
+    while (round < rounds)
+    {
+        size_t i;
+        while (i < count)
+        {
+            auto placed = localBlitCopy(target, values[i]);
+            checksum += placed.checksum;
+            destroy!false(*placed);
+            ++i;
+        }
+        ++round;
+    }
+
+    return checksum;
+}
+
 void main(string[] args)
 {
     if (args.length != 3)
     {
         stderr.writeln(
-            "usage: element-lifetime-copy-probe <emplace|copyemplace> <rounds>");
+            "usage: element-lifetime-copy-probe <emplace|copyemplace|localblit> <rounds>");
         return;
     }
 
@@ -270,6 +323,9 @@ void main(string[] args)
             break;
         case "copyemplace":
             checksum = bench_copyemplace(values.ptr, values.length, rounds);
+            break;
+        case "localblit":
+            checksum = bench_localblit(values.ptr, values.length, rounds);
             break;
     }
 
