@@ -154,7 +154,7 @@ if (Capacity > 0)
         }
 
         static foreach (i; 0 .. Capacity)
-        {
+        {{
             const bits =
                 mixDouble(buffer[i]);
 
@@ -171,7 +171,7 @@ if (Capacity > 0)
 
             checksum *=
                 0x0000_0100_0000_01B3UL;
-        }
+        }}
     }
 
     return checksum;
