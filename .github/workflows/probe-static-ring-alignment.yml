@@ -9,6 +9,7 @@ on:
       - source/containers/ring_buffer.d
       - source/containers/internal/inline_storage.d
       - source/containers/internal/target_capabilities.d
+      - tests/static-ring-overalignment-gc/**
       - .github/workflows/probe-static-ring-alignment.yml
   workflow_dispatch:
 
@@ -103,6 +104,10 @@ jobs:
       - name: Over-aligned inline-storage GC reachability
         shell: bash
         run: dub run --root=tests/inline-storage-gc --compiler="$DC" --force
+
+      - name: Over-aligned StaticRingBuffer GC reachability
+        shell: bash
+        run: dub run --root=tests/static-ring-overalignment-gc --compiler="$DC" --force
 
       - name: Upload probe evidence
         uses: actions/upload-artifact@v4
