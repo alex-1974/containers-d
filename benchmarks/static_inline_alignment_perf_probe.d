@@ -223,7 +223,7 @@ void main(string[] args)
     if (args.length != 3)
     {
         stderr.writeln(
-            "usage: static-inline-alignment-perf-probe "
+            "usage: static-inline-alignment-perf-probe " ~
             "<imported-normal|imported-over|local-normal|local-over> <rounds>");
         return;
     }
