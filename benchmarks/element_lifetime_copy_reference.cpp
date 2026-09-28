@@ -10,10 +10,12 @@ namespace {
 constexpr std::size_t value_count = 256;
 
 struct PlainValue {
-    std::uint64_t a;
-    std::uint64_t b;
-    std::uint64_t c;
-    std::uint64_t d;
+    std::uint64_t a{};
+    std::uint64_t b{};
+    std::uint64_t c{};
+    std::uint64_t d{};
+
+    PlainValue() noexcept = default;
 
     explicit PlainValue(std::uint64_t seed) noexcept
         : a(seed),
