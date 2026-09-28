@@ -139,13 +139,15 @@ public:
         return *slotPointer(index);
     }
 
-    T[] asSlice()
+    pragma(inline, true)
+    T[] opSlice()
         return scope pure nothrow @safe @nogc
     {
         return slotSlice(0, _length);
     }
 
-    const(T)[] asSlice() const
+    pragma(inline, true)
+    const(T)[] opSlice() const
         return scope pure nothrow @safe @nogc
     {
         return slotSlice(0, _length);
@@ -359,7 +361,7 @@ version (unittest)
         assert(vector[1] == 2.0);
         assert(vector.front == 1.0);
         assert(vector.back == 2.0);
-        assert(vector.asSlice == [1.0, 2.0]);
+        assert(vector[] == [1.0, 2.0]);
 
         vector.popBack();
         assert(vector.length == 1);
@@ -389,10 +391,10 @@ unittest
     assert(!vector.tryPushBack(30));
 
     assert(vector.full);
-    assert(vector.asSlice == [10, 20]);
+    assert(vector[] == [10, 20]);
 
     vector.popBack();
-    assert(vector.asSlice == [10]);
+    assert(vector[] == [10]);
 }
 
 unittest
