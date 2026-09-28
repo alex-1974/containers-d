@@ -62,7 +62,13 @@ private final class Holder
 pragma(inline, false)
 private Holder createBufferedHolder()
 {
-    auto holder = createBufferedHolder();
+    auto holder = new Holder;
+    auto probe = new ReachabilityProbe(
+        ReachabilityProbe.Kind.buffered,
+        0x5A17);
+
+    constructBuffered(holder.storage, probe);
+    probe = null;
 
     return holder;
 }
