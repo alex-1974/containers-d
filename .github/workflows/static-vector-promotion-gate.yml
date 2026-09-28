@@ -1,0 +1,182 @@
+name: StaticVector Promotion Gate
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - source/containers/static_vector.d
+      - source/containers/internal/static_vector.d
+      - source/containers/internal/inline_storage.d
+      - source/containers/internal/element_lifetime.d
+      - tests/static-vector-consumer/**
+      - tests/static-vector-lifecycle/**
+      - tests/static-vector-adversarial/**
+      - tests/static-vector-gc/**
+      - tests/compile-negative/static-vector-*/**
+      - .github/workflows/static-vector-promotion-gate.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compiler-matrix:
+    name: StaticVector / ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - dmd-2.111.0
+          - dmd-2.112.1
+          - dmd-2.113.0
+          - ldc-1.41.0
+          - ldc-1.42.0
+          - ldc-1.43.0
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ${{ matrix.compiler }}
+          dub: 1.40.0
+
+      - name: Compiler versions
+        shell: bash
+        run: |
+          echo "DC=$DC"
+          "$DC" --version
+          dub --version
+
+      - name: Unit tests
+        shell: bash
+        run: dub test --compiler="$DC" --force
+
+      - name: Unit tests with DIP1000
+        shell: bash
+        run: DFLAGS="-unittest -preview=dip1000" dub test --compiler="$DC" --force
+
+      - name: StaticVector external consumer
+        shell: bash
+        run: dub run --root=tests/static-vector-consumer --compiler="$DC" --force
+
+      - name: StaticVector external consumer with DIP1000
+        shell: bash
+        run: DFLAGS="-preview=dip1000" dub run --root=tests/static-vector-consumer --compiler="$DC" --force
+
+      - name: StaticVector lifecycle
+        shell: bash
+        run: dub run --root=tests/static-vector-lifecycle --compiler="$DC" --force
+
+      - name: StaticVector adversarial reference model
+        shell: bash
+        run: dub run --root=tests/static-vector-adversarial --compiler="$DC" --force
+
+      - name: StaticVector GC reachability
+        shell: bash
+        run: dub run --root=tests/static-vector-gc --compiler="$DC" --force
+
+      - name: StaticVector DIP1000 escape rejection
+        shell: bash
+        run: |
+          for root in \
+            tests/compile-negative/static-vector-slice-escape \
+            tests/compile-negative/static-vector-ref-escape
+          do
+            if DFLAGS="-preview=dip1000" dub build \
+                --root="$root" \
+                --compiler="$DC" \
+                --force; then
+              echo "Expected StaticVector borrow escape to fail: $root"
+              false
+            fi
+          done
+
+      - name: StaticVector transfer rejection
+        shell: bash
+        run: |
+          for root in \
+            tests/compile-negative/static-vector-move-only-copy \
+            tests/compile-negative/static-vector-nontrivial-assign
+          do
+            if dub build \
+                --root="$root" \
+                --compiler="$DC" \
+                --force; then
+              echo "Expected invalid StaticVector transfer to fail: $root"
+              false
+            fi
+          done
+
+      - name: Release build
+        shell: bash
+        run: dub build --build=release --compiler="$DC" --force
+
+      - name: Documentation build
+        if: matrix.compiler == 'dmd-2.111.0'
+        shell: bash
+        run: dub build --build=docs --compiler="$DC" --force
+
+  portability:
+    name: StaticVector portability / ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux ARM64
+            os: ubuntu-24.04-arm
+          - name: Windows x64
+            os: windows-latest
+          - name: macOS Intel
+            os: macos-15-intel
+          - name: macOS ARM64
+            os: macos-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install LDC
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ldc-latest
+
+      - name: Platform and compiler information
+        shell: bash
+        run: |
+          echo "RUNNER_OS=$RUNNER_OS"
+          echo "RUNNER_ARCH=$RUNNER_ARCH"
+          uname -a || true
+          "$DC" --version
+          dub --version
+
+      - name: Unit tests
+        shell: bash
+        run: dub test --compiler="$DC" --force
+
+      - name: StaticVector external consumer
+        shell: bash
+        run: dub run --root=tests/static-vector-consumer --compiler="$DC" --force
+
+      - name: StaticVector lifecycle
+        shell: bash
+        run: dub run --root=tests/static-vector-lifecycle --compiler="$DC" --force
+
+      - name: StaticVector adversarial reference model
+        shell: bash
+        run: dub run --root=tests/static-vector-adversarial --compiler="$DC" --force
+
+      - name: StaticVector GC reachability
+        shell: bash
+        run: dub run --root=tests/static-vector-gc --compiler="$DC" --force
+
+      - name: Release build
+        shell: bash
+        run: dub build --build=release --compiler="$DC" --force
