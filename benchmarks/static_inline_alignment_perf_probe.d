@@ -8,8 +8,8 @@
  *
  * - imported: the reusable InlineRawStorage research type;
  * - local: the same representation generated in the benchmark module through
- *   a typed template mixin, probing whether DMD cross-module abstraction is the
- *   source of semantic/codegen cost.
+ *   a typed template mixin with explicit inline requests, probing whether
+ *   DMD's cost is primarily un-inlined slot-addressing machinery.
  */
 module containers.static_inline_alignment_perf_probe;
 
@@ -73,6 +73,7 @@ private mixin template LocalRawSlotStorage(
         align(T.alignof)
         private ubyte[T.sizeof * Capacity] _localBytes = void;
 
+    pragma(inline, true)
     private size_t localBaseOffset() const @safe @nogc nothrow
     {
         static if (!DynamicAlignment)
@@ -89,6 +90,7 @@ private mixin template LocalRawSlotStorage(
         }
     }
 
+    pragma(inline, true)
     T* slotPointer(size_t physicalIndex)
         return scope @safe @nogc nothrow
     {
