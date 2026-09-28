@@ -8,8 +8,9 @@
  *
  * - imported: the reusable InlineRawStorage research type;
  * - local: the same representation generated in the benchmark module through
- *   a typed template mixin with explicit inline requests, probing whether
- *   DMD's cost is primarily un-inlined slot-addressing machinery.
+ *   a typed template mixin with explicit inline requests and a minimal
+ *   direct @trusted cast boundary, probing DMD's sensitivity to the
+ *   safe-lambda form used by the reusable research type.
  */
 module containers.static_inline_alignment_perf_probe;
 
@@ -74,7 +75,7 @@ private mixin template LocalRawSlotStorage(
         private ubyte[T.sizeof * Capacity] _localBytes = void;
 
     pragma(inline, true)
-    private size_t localBaseOffset() const @safe @nogc nothrow
+    private size_t localBaseOffset() const @trusted @nogc nothrow
     {
         static if (!DynamicAlignment)
         {
@@ -82,8 +83,7 @@ private mixin template LocalRawSlotStorage(
         }
         else
         {
-            const address = (() @trusted =>
-                cast(size_t) _localBytes.ptr)();
+            const address = cast(size_t) _localBytes.ptr;
             const mask = T.alignof - 1;
             const misalignment = address & mask;
             return (T.alignof - misalignment) & mask;
@@ -92,15 +92,14 @@ private mixin template LocalRawSlotStorage(
 
     pragma(inline, true)
     T* slotPointer(size_t physicalIndex)
-        return scope @safe @nogc nothrow
+        return scope @trusted @nogc nothrow
     {
         assert(physicalIndex < Capacity);
 
         const begin =
             localBaseOffset() + physicalIndex * T.sizeof;
 
-        return (() @trusted =>
-            cast(T*) (_localBytes.ptr + begin))();
+        return cast(T*) (_localBytes.ptr + begin);
     }
 }
 
