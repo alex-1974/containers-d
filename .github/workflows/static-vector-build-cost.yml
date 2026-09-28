@@ -7,6 +7,7 @@ on:
     paths:
       - benchmarks/static_vector_build_cost_baseline.d
       - benchmarks/static_vector_build_cost_candidate.d
+      - benchmarks/static_vector_build_cost_matched.d
       - source/containers/static_vector.d
       - source/containers/internal/static_vector.d
       - source/containers/internal/inline_storage.d
@@ -72,7 +73,8 @@ jobs:
               "$bytes" "$text_size" "$data_size" "$bss_size" >> "$RESULTS"
           }
 
-          compile_one baseline benchmarks/static_vector_build_cost_baseline.d
+          compile_one minimal benchmarks/static_vector_build_cost_baseline.d
+          compile_one matched benchmarks/static_vector_build_cost_matched.d
           compile_one candidate benchmarks/static_vector_build_cost_candidate.d
 
           cat "$RESULTS"
