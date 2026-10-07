@@ -130,9 +130,9 @@ Production promotion admits only the stable `StaticVector!(T, Capacity)` type.
 The research-only scalar composition mixin remains outside the compatibility
 surface.
 
-### M4.4 — Ring family factoring — research complete, promotion current
+### M4.4 — Ring family factoring — complete
 
-Tracking: issue #45. Research proof: PR #46.
+Tracking: issue #45. Research proof: PR #46. Promotion: PR #47.
 
 Qualified evidence:
 
@@ -151,13 +151,25 @@ Production promotion is deliberately limited to the package-internal
 separate storage, ownership, allocation, copy/move and public semantic
 contracts.
 
-### M4.5 — Real-consumer adaptation proofs
+### M4.5 — Real-consumer adaptation proofs — research complete
 
-Demonstrate materially different adaptation modes, including domain-owned
-numeric buffers, synchronized bounded mailboxes, and reusable/pool-backed
-storage, without forcing them behind one public policy type.
+Tracking: issue #49.
 
-### M4.6 — Public customization decision
+Qualified adaptation modes:
+
+- numeric/domain-owned workspaces use StaticVector only where its semantics
+  match; caller-owned slice APIs remain first-class where ownership belongs to
+  the caller;
+- synchronized bounded mailboxes are a separate semantic family layered over
+  bounded FIFO storage, not a thread-safety mode of RingBuffer;
+- reusable contiguous scratch, heterogeneous arenas and cross-thread buffer
+  pools are distinct ownership/lifetime families rather than storage-policy
+  switches.
+
+The M4.5 evidence finds no need for a universal public customization surface.
+See `docs/research/m4-5-consumer-adaptation.md`.
+
+### M4.6 — Public customization decision — next
 
 Only after M4.2-M4.5 evidence:
 
