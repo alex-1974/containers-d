@@ -26,6 +26,7 @@ The current unreleased development branch additionally exports:
 
 ```d
 import containers :
+    ScratchBuffer,
     StaticVector,
     WorkStealingDeque,
     WorkStealingTakeResult;
@@ -78,6 +79,40 @@ Scalar element types use an automatically selected direct inline
 representation. Non-trivial types use the qualified lifetime/storage machinery
 for construction, destruction, GC visibility and alignment. Those choices are
 implementation details, not public policy parameters.
+
+## Scratch buffer
+
+The unreleased development branch adds `ScratchBuffer!T`, a reusable
+runtime-capacity contiguous typed buffer for temporary work storage.
+
+```d
+import containers : ScratchBuffer;
+
+ScratchBuffer!int scratch;
+
+assert(scratch.tryReserve(64));
+
+assert(scratch.tryPushBack(10));
+assert(scratch.tryPushBack(20));
+assert(scratch[] == [10, 20]);
+
+scratch.reset();
+
+assert(scratch.empty);
+assert(scratch.capacity == 64);
+```
+
+`reset()` ends the live element lifetimes but retains the backing allocation.
+For trivial pointer-free elements this specializes to an O(1) logical reset.
+
+Capacity can be increased between work phases with `tryReserve`. If growth is
+required while live elements exist, the operation returns `false` and leaves
+the buffer unchanged. ScratchBuffer never relocates live elements and does not
+embed automatic geometric growth or shrink policy.
+
+The first family is thread-confined. Arena allocation, BufferPool semantics,
+live-content reallocation, public UniqueBuffer ownership, and allocator-policy
+customization remain outside this API.
 
 ## Work-stealing deque
 
@@ -214,13 +249,14 @@ stale conservative roots.
 
 The fixed- and runtime-capacity ring-buffer families are released through
 v0.1.1. The current development line additionally contains the qualified
-`StaticVector!(T, Capacity)` family and is promoting the independently
-qualified `WorkStealingDeque!(T, Capacity)` concurrent family.
+`StaticVector!(T, Capacity)` and `WorkStealingDeque!(T, Capacity)` families and
+is promoting the independently qualified `ScratchBuffer!T` reusable-storage
+family.
 
 Future candidates include:
 
 - synchronized bounded queues;
-- reusable scratch/arena/buffer-pool storage families;
+- heterogeneous Arena and BufferPool families where separately justified;
 - separately designed SPSC/MPSC/MPMC concurrent families where justified.
 
 Materially different storage, ownership, overflow, allocation or concurrency
