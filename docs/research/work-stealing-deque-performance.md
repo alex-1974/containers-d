@@ -41,45 +41,65 @@ Checksums also match exactly.
 Conclusion: the containers-d source/API adaptation has no measurable
 instruction-count overhead in the isolated qualified hot paths.
 
-## Contention wall-clock diagnostic
+## Contention wall-clock qualification
 
-A paired wall-clock probe compares candidate/reference on the same GitHub
-x86 runner. Producer and thieves are pinned using the same Linux affinity
-mechanism used by the source R0.1 scheduler research.
+The x86 GitHub runner exposes four logical CPUs backed by only two physical
+cores. Its contention timings remain diagnostic only because owner plus three
+thieves oversubscribe the physical topology and LDC results change direction
+between reruns.
 
-The runner exposes four logical CPUs backed by only two physical cores.
-Therefore this probe is **diagnostic only** and is not a production gate.
+The native Linux AArch64 runner is materially better suited to this gate:
 
-DMD pinned results are consistently close to parity (roughly within ±3% in
-the qualified 1- and 3-thief cases).
+- ARM Neoverse-N2;
+- four logical CPUs;
+- four physical cores;
+- one hardware thread per core;
+- one NUMA node.
 
-LDC paired results are not stable enough to attribute to either implementation.
-Across independent reruns, the same 3-thief single-steal comparison changed
-from about 1.44x candidate/reference to 0.94x and 1.10x. The 3-thief batch
-comparison simultaneously varied from about 0.66x to 0.99x and 0.77x.
+Producer is pinned to CPU 0 and thieves to CPUs 1..3.
 
-These direction-changing results coexist with exact isolated instruction and
-layout parity. They therefore do not justify a containers-d code change.
+The first ARM experiment still showed a strong order effect because each
+candidate/reference sample pair always executed in one order. The benchmark
+was therefore corrected to alternate candidate-first and reference-first
+pairs and to report the median of pair-local ratios. This removes slow host
+drift from the implementation comparison.
+
+Qualified native AArch64 / LDC 1.41 paired ratios:
+
+| Workload | containers-d / P08e median ratio |
+|---|---:|
+| 1 thief, single steal | 1.02497 |
+| 1 thief, batch steal | 1.00929 |
+| 3 thieves, single steal | 0.971833 |
+| 3 thieves, batch steal | 1.07536 |
+
+All four workloads pass the current material-regression gate of 1.10.
+
+The same native ARM build also reports equal candidate/reference aggregate
+size/alignment and equal normalized wrapper instruction counts:
+
+- owner pair: 70 vs 70 instructions;
+- single steal: 61 vs 61;
+- batch wrapper: 4 vs 4.
 
 ## Performance decision
 
-Do not optimize the containers-d prototype in response to the unstable
-contention wall-clock diagnostic.
+Do not modify the containers-d algorithm for performance at this stage.
 
-Retain as production-relevant evidence:
+Production-relevant evidence is now:
 
 1. exact same-binary semantic parity;
 2. exact retired-instruction parity on DMD 2.111 and LDC 1.41;
 3. equal aggregate size/alignment;
-4. native x86_64 and AArch64 correctness;
-5. the retained R0.1 scheduler-neighbourhood evidence as an immutable external
+4. native AArch64 normalized code-size parity;
+5. native x86_64 and AArch64 correctness;
+6. native four-physical-core AArch64 contention parity within the 10% material
+   regression gate;
+7. retained R0.1 scheduler-neighbourhood evidence as immutable external
    reference, not as work continued by this project.
 
-A stable wall-clock admission gate requires a qualification host with enough
-physical cores for the requested topology and controlled affinity/noise.
-
-Until such a host is used, direction-changing hosted-runner timings are
-research diagnostics only.
+The oversubscribed x86 hosted-runner wall-clock workflow remains diagnostic and
+must not override the physical-core qualification evidence.
 
 ## Native AArch64 physical-core qualification
 
