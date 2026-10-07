@@ -12,7 +12,9 @@ import containers.internal.element_lifetime :
     PlacementMoveOps,
     elementHasIndirections,
     elementNeedsDestruction;
-import containers.internal.runtime_storage : RuntimeStorageOwner;
+import containers.internal.runtime_storage :
+    RuntimeStorageAccessOps,
+    RuntimeStorageOwner;
 import core.lifetime : emplace, forward;
 import std.traits : hasIndirections, isNested, Unqual;
 
@@ -38,25 +40,27 @@ private:
     mixin EndElementLifetimeOps!T;
 
     RuntimeStorageOwner!T _storage;
+    mixin RuntimeStorageAccessOps!T;
+
     size_t _length;
     size_t _highWater;
 
     ref T borrowedSlot(
         size_t index) scope return @trusted
     {
-        return *_storage.slotPointer(index);
+        return *runtimeSlotPointer(index);
     }
 
     ref const(T) borrowedSlot(
         size_t index) const scope return @trusted
     {
-        return *_storage.slotPointer(index);
+        return *runtimeSlotPointer(index);
     }
 
     void endSlotLifetime(size_t index)
     {
-        endElementLifetime(_storage.slotPointer(index));
-        _storage.clearVacatedSlot(index);
+        endElementLifetime(runtimeSlotPointer(index));
+        runtimeClearVacatedSlot(index);
     }
 
 public:
@@ -143,7 +147,7 @@ public:
         if (_length == 0)
             return null;
 
-        return _storage.slotPointer(0)[0 .. _length];
+        return runtimeSlotPointer(0)[0 .. _length];
     }
 
     pragma(inline, true)
@@ -152,7 +156,7 @@ public:
         if (_length == 0)
             return null;
 
-        return _storage.slotPointer(0)[0 .. _length];
+        return runtimeSlotPointer(0)[0 .. _length];
     }
 
     /**
@@ -174,11 +178,11 @@ public:
             is(U == T) &&
             !__traits(isRef, value))
         {
-            placementMoveConstruct(_storage.slotPointer(index), value);
+            placementMoveConstruct(runtimeSlotPointer(index), value);
         }
         else
         {
-            emplace(_storage.slotPointer(index), forward!value);
+            emplace(runtimeSlotPointer(index), forward!value);
         }
 
         ++_length;
