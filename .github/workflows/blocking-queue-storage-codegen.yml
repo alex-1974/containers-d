@@ -95,20 +95,23 @@ jobs:
           diff -u "$OUT/bench_manual.norm" "$OUT/bench_candidate.norm" || true
 
           echo '=== candidate/manual push callees ==='
-          candidate_target=$(grep -E '\b(call|callq)\b' "$OUT/bench_candidate.asm" | head -1 | sed -E 's/.*<([^>]+)>.*/\1/')
-          manual_target=$(grep -E '\b(call|callq)\b' "$OUT/bench_manual.asm" | head -1 | sed -E 's/.*<([^>]+)>.*/\1/')
+          candidate_target=$(grep -E '\b(call|callq)\b' "$OUT/bench_candidate.asm" | head -1 | sed -E 's/.*<([^>]+)>.*/\1/' || true)
+          manual_target=$(grep -E '\b(call|callq)\b' "$OUT/bench_manual.asm" | head -1 | sed -E 's/.*<([^>]+)>.*/\1/' || true)
 
           echo "candidate target=$candidate_target"
           echo "manual target=$manual_target"
 
-          objdump -d --no-show-raw-insn --disassemble="$candidate_target" "$BIN" > "$OUT/candidate-push.asm"
-          objdump -d --no-show-raw-insn --disassemble="$manual_target" "$BIN" > "$OUT/manual-push.asm"
+          if [[ -n "$candidate_target" ]]; then
+            objdump -d --no-show-raw-insn --disassemble="$candidate_target" "$BIN" > "$OUT/candidate-push.asm"
+            echo "candidate push instructions=$(grep -E '^[[:space:]]*[0-9a-f]+:' "$OUT/candidate-push.asm" | wc -l)"
+            grep -E '\b(call|callq)\b' "$OUT/candidate-push.asm" || true
+          fi
 
-          echo "candidate push instructions=$(grep -E '^[[:space:]]*[0-9a-f]+:' "$OUT/candidate-push.asm" | wc -l)"
-          grep -E '\b(call|callq)\b' "$OUT/candidate-push.asm" || true
-
-          echo "manual push instructions=$(grep -E '^[[:space:]]*[0-9a-f]+:' "$OUT/manual-push.asm" | wc -l)"
-          grep -E '\b(call|callq)\b' "$OUT/manual-push.asm" || true
+          if [[ -n "$manual_target" ]]; then
+            objdump -d --no-show-raw-insn --disassemble="$manual_target" "$BIN" > "$OUT/manual-push.asm"
+            echo "manual push instructions=$(grep -E '^[[:space:]]*[0-9a-f]+:' "$OUT/manual-push.asm" | wc -l)"
+            grep -E '\b(call|callq)\b' "$OUT/manual-push.asm" || true
+          fi
 
       - name: Upload codegen evidence
         uses: actions/upload-artifact@v7
