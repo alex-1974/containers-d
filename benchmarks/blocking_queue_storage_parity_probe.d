@@ -168,7 +168,13 @@ extern(C) ulong bench_candidate_pop_only(
     foreach (round; 0 .. rounds)
     {
         foreach (seed; input)
-            assert(storage.tryPushBack(seed ^ cast(int)round));
+        {
+            const accepted =
+                storage.tryPushBack(seed ^ cast(int)round);
+
+            if (!accepted)
+                return ulong.max;
+        }
 
         foreach (_; 0 .. input.length)
         {
@@ -191,7 +197,13 @@ extern(C) ulong bench_manual_pop_only(
     foreach (round; 0 .. rounds)
     {
         foreach (seed; input)
-            assert(storage.tryPushBack(seed ^ cast(int)round));
+        {
+            const accepted =
+                storage.tryPushBack(seed ^ cast(int)round);
+
+            if (!accepted)
+                return ulong.max;
+        }
 
         foreach (_; 0 .. input.length)
             checksum = mix(checksum, storage.popFront());
