@@ -1,0 +1,63 @@
+name: M7 BlockingQueue Research
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - source/containers/research/blocking_queue.d
+      - tests/blocking-queue-research/**
+      - docs/research/m7-blocking-queue-contract.md
+      - .github/workflows/blocking-queue-research.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  correctness:
+    name: BlockingQueue correctness / ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - dmd-2.111.0
+          - ldc-1.41.0
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ${{ matrix.compiler }}
+
+      - name: Compiler versions
+        shell: bash
+        run: |
+          "$DC" --version
+          dub --version
+
+      - name: Library tests
+        shell: bash
+        run: dub test --compiler="$DC" --force
+
+      - name: External BlockingQueue concurrency consumer
+        shell: bash
+        run: |
+          dub run \
+            --root=tests/blocking-queue-research \
+            --compiler="$DC" \
+            --force
+
+      - name: External BlockingQueue consumer with DIP1000
+        shell: bash
+        run: |
+          DFLAGS="-preview=dip1000" \
+            dub run \
+              --root=tests/blocking-queue-research \
+              --compiler="$DC" \
+              --force
