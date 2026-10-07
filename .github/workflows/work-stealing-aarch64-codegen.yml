@@ -1,0 +1,123 @@
+name: Work-Stealing Native AArch64 Codegen
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - source/containers/research/work_stealing_deque.d
+      - benchmarks/work_stealing_p08e_parity_probe.d
+      - .github/workflows/work-stealing-aarch64-codegen.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  codegen:
+    name: Native AArch64 codegen / LDC 1.41
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - name: Check out containers-d
+        uses: actions/checkout@v7
+        with:
+          path: containers-d
+
+      - name: Check out pinned concurrency-d R0.1
+        uses: actions/checkout@v7
+        with:
+          repository: alex-1974/concurrency-d
+          ref: b35a92f3412da6ca8a666cca9c144b5a335e5988
+          path: concurrency-d
+
+      - name: Install LDC
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ldc-1.41.0
+
+      - name: Build same-binary parity probe
+        shell: bash
+        run: |
+          cd containers-d
+          mkdir -p build/work-stealing-arm-codegen
+
+          REF=../concurrency-d/research/r0_1_work_stealing_deque/candidate/source
+
+          "$DC" \
+            -O3 \
+            -release \
+            -boundscheck=off \
+            -Isource \
+            -I"$REF" \
+            -of=build/work-stealing-arm-codegen/probe \
+            benchmarks/work_stealing_p08e_parity_probe.d \
+            source/containers/research/work_stealing_deque.d \
+            source/containers/internal/element_lifetime.d \
+            "$REF/concurrency/research/modular_bounded_wsq_batch_marked_top.d" \
+            "$REF/concurrency/research/bounded_wsq.d"
+
+      - name: Compare wrapper disassembly
+        shell: bash
+        run: |
+          cd containers-d
+          BIN=build/work-stealing-arm-codegen/probe
+          OUT=build/work-stealing-arm-codegen
+
+          objdump --version | head -1
+
+          extract() {
+            symbol="$1"
+            file="$2"
+            objdump -d --no-show-raw-insn --disassemble="$symbol" "$BIN" > "$file"
+          }
+
+          normalize() {
+            input="$1"
+            output="$2"
+            sed -E 's/^[[:space:]]*[0-9a-f]+:[[:space:]]*//' "$input" | \
+              sed -E 's/[[:space:]]+<[^>]+>//g' | \
+              sed -E '/^$/d; /file format/d; /Disassembly of section/d; /^.*>:$/d' > "$output"
+          }
+
+          for workload in owner_pair single_steal batch_steal
+          do
+            extract "bench_candidate_${workload}" "$OUT/candidate-${workload}.asm"
+            extract "bench_reference_${workload}" "$OUT/reference-${workload}.asm"
+
+            normalize "$OUT/candidate-${workload}.asm" "$OUT/candidate-${workload}.norm"
+            normalize "$OUT/reference-${workload}.asm" "$OUT/reference-${workload}.norm"
+
+            echo "=== $workload ==="
+            echo "candidate instructions: $(wc -l < "$OUT/candidate-${workload}.norm")"
+            echo "reference instructions: $(wc -l < "$OUT/reference-${workload}.norm")"
+
+            if diff -u "$OUT/reference-${workload}.norm" "$OUT/candidate-${workload}.norm" > "$OUT/${workload}.diff"; then
+              echo "normalized wrapper code: identical"
+            else
+              echo "normalized wrapper code differs"
+              cat "$OUT/${workload}.diff"
+            fi
+          done
+
+          {
+            echo "### Native AArch64 / LDC 1.41 wrapper codegen"
+            echo
+            for workload in owner_pair single_steal batch_steal
+            do
+              echo "#### $workload"
+              echo '```diff'
+              cat "$OUT/${workload}.diff" || true
+              echo '```'
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload codegen evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: work-stealing-aarch64-codegen
+          path: |
+            containers-d/build/work-stealing-arm-codegen/*.asm
+            containers-d/build/work-stealing-arm-codegen/*.norm
+            containers-d/build/work-stealing-arm-codegen/*.diff
+          if-no-files-found: error
