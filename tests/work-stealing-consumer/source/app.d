@@ -41,7 +41,7 @@ private void exerciseSharedHandle()
 {
     WorkStealingDeque!(Handle, 4) queue;
 
-    const handle = Handle(&persistentValue);
+    auto handle = Handle(&persistentValue);
 
     assert(queue.tryPush(handle));
 
