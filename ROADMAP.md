@@ -188,12 +188,46 @@ Decision record: `docs/design/public-customization-decision.md`.
 M4 exits with concrete production families and qualified internal composition,
 not a universal framework.
 
+## M5 — Work-stealing deque family — current
+
+Tracking: issues #38 and #39.
+
+Consumer: concurrency-d.
+
+Selected inherited research direction:
+
+- bounded fixed power-of-two capacity;
+- exactly one owner and zero or more thieves;
+- P08e 63-bit marked-top counter protocol;
+- owner tryPush/pop;
+- thief steal/stealBatch;
+- trivial atomically transportable shared-compatible value handles;
+- non-copyable concurrent identity;
+- @safe @nogc nothrow callable operations with a narrow trusted ordering
+  primitive;
+- no scheduler overflow, execution, parking or reclamation policy.
+
+Current phase:
+
+- containers-native internal prototype;
+- explicit Capacity rather than research LogSize;
+- element capability/negative compile qualification;
+- sequential and wrap semantics;
+- next: last-item, multi-thief, marked-top overlap and near-capacity concurrent
+  correctness on x86_64, followed by native AArch64 reproduction.
+
+Research record:
+`docs/research/work-stealing-deque-production.md`.
+
+No public export until the correctness, safety, architecture, performance and
+consumer-neighbourhood gates are complete.
+
 ## Later candidates
 
 - UniqueBuffer / owned contiguous storage where consumer evidence supports it;
 - ScratchBuffer / Arena families;
 - synchronized bounded queues;
-- concurrent work-stealing deque and other explicitly concurrent families.
+- other explicitly concurrent families.
 
 Later milestones are admitted only when their contracts, consumers, safety and
 performance gates are explicit.
