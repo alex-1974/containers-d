@@ -144,19 +144,16 @@ public:
     pragma(inline, true)
     T[] opSlice()() scope return @trusted @nogc nothrow
     {
-        if (_length == 0)
-            return null;
-
-        return runtimeSlotPointer(0)[0 .. _length];
+        // Empty borrows promise length zero, not a null pointer. Building the
+        // slice directly from the owned backing pointer avoids a hot-path
+        // empty special case and remains valid for the inert null/zero state.
+        return cast(T*) _storage._bytes.ptr [0 .. _length];
     }
 
     pragma(inline, true)
     const(T)[] opSlice()() const scope return @trusted @nogc nothrow
     {
-        if (_length == 0)
-            return null;
-
-        return runtimeSlotPointer(0)[0 .. _length];
+        return cast(const(T)*) _storage._bytes.ptr [0 .. _length];
     }
 
     /**
