@@ -1,0 +1,104 @@
+name: M7 BlockingQueue Storage Codegen
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - source/containers/runtime_ring_buffer.d
+      - source/containers/internal/ring_sequence.d
+      - source/containers/internal/runtime_storage.d
+      - benchmarks/blocking_queue_storage_parity_probe.d
+      - .github/workflows/blocking-queue-storage-codegen.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  codegen:
+    name: BlockingQueue storage codegen / ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - dmd-2.111.0
+          - ldc-1.41.0
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ${{ matrix.compiler }}
+
+      - name: Build storage parity probe
+        shell: bash
+        run: |
+          mkdir -p build/m7-blocking-storage-codegen
+
+          case "${{ matrix.compiler }}" in
+            dmd-*)
+              "$DC" \
+                -O \
+                -release \
+                -inline \
+                -boundscheck=off \
+                -Isource \
+                -of=build/m7-blocking-storage-codegen/probe \
+                benchmarks/blocking_queue_storage_parity_probe.d \
+                source/containers/runtime_ring_buffer.d \
+                source/containers/internal/ring_sequence.d \
+                source/containers/internal/runtime_storage.d \
+                source/containers/internal/element_lifetime.d
+              ;;
+            ldc-*)
+              "$DC" \
+                -O3 \
+                -release \
+                -boundscheck=off \
+                -Isource \
+                -of=build/m7-blocking-storage-codegen/probe \
+                benchmarks/blocking_queue_storage_parity_probe.d \
+                source/containers/runtime_ring_buffer.d \
+                source/containers/internal/ring_sequence.d \
+                source/containers/internal/runtime_storage.d \
+                source/containers/internal/element_lifetime.d
+              ;;
+          esac
+
+      - name: Inspect wrappers and calls
+        shell: bash
+        run: |
+          BIN=build/m7-blocking-storage-codegen/probe
+          OUT=build/m7-blocking-storage-codegen
+
+          for symbol in bench_candidate bench_manual
+          do
+            objdump -d --no-show-raw-insn --disassemble="$symbol" "$BIN" \
+              > "$OUT/$symbol.asm"
+
+            sed -E 's/^[[:space:]]*[0-9a-f]+:[[:space:]]*//' "$OUT/$symbol.asm" | \
+              sed -E '/^$/d; /file format/d; /Disassembly of section/d; /^.*>:$/d' \
+              > "$OUT/$symbol.norm"
+
+            echo "=== $symbol ==="
+            echo "instructions=$(wc -l < "$OUT/$symbol.norm")"
+            grep -E '\b(call|callq)\b' "$OUT/$symbol.asm" || true
+          done
+
+          echo '=== normalized diff ==='
+          diff -u "$OUT/bench_manual.norm" "$OUT/bench_candidate.norm" || true
+
+      - name: Upload codegen evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: m7-blocking-storage-codegen-${{ matrix.compiler }}
+          path: |
+            build/m7-blocking-storage-codegen/*.asm
+            build/m7-blocking-storage-codegen/*.norm
+          if-no-files-found: error
