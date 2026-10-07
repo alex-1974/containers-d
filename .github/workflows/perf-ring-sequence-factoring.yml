@@ -1,0 +1,143 @@
+name: Ring Sequence Factoring Probe
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - source/containers/internal/ring_sequence.d
+      - source/containers/ring_buffer.d
+      - source/containers/runtime_ring_buffer.d
+      - benchmarks/ring_sequence_factoring_probe.d
+      - .github/workflows/perf-ring-sequence-factoring.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  instruction-counts:
+    name: Ring sequence Ir / ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - dmd-2.111.0
+          - ldc-1.41.0
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ${{ matrix.compiler }}
+
+      - name: Install Callgrind
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y valgrind
+
+      - name: Build probe
+        shell: bash
+        run: |
+          mkdir -p build/ring-sequence-factoring
+
+          case "${{ matrix.compiler }}" in
+            dmd-*)
+              "$DC" -O -release -inline -boundscheck=off \
+                -Isource \
+                -of=build/ring-sequence-factoring/probe \
+                benchmarks/ring_sequence_factoring_probe.d
+              ;;
+            ldc-*)
+              "$DC" -O3 -release -boundscheck=off \
+                -Isource \
+                -of=build/ring-sequence-factoring/probe \
+                benchmarks/ring_sequence_factoring_probe.d
+              ;;
+          esac
+
+      - name: Verify semantic equivalence
+        shell: bash
+        run: |
+          BIN=build/ring-sequence-factoring/probe
+          ROUNDS=4096
+
+          for family in static4 static7 runtime7
+          do
+            baseline=$("$BIN" "${family}-baseline" "$ROUNDS" | awk '{print $2}')
+            factored=$("$BIN" "${family}-factored" "$ROUNDS" | awk '{print $2}')
+            echo "$family baseline=$baseline factored=$factored"
+            test "$baseline" = "$factored"
+          done
+
+      - name: Measure retired instructions
+        shell: bash
+        run: |
+          BIN=build/ring-sequence-factoring/probe
+          ROUNDS=262144
+          RESULTS=build/ring-sequence-factoring/results.tsv
+
+          printf 'compiler\tfamily\tvariant\trounds\tIr\tchecksum\n' > "$RESULTS"
+
+          measure() {
+            family="$1"
+            variant="$2"
+            symbol="$3"
+            selected="${family}-${variant}"
+            out="build/ring-sequence-factoring/callgrind-${family}-${variant}.out"
+
+            checksum=$("$BIN" "$selected" "$ROUNDS" | awk '{print $2}')
+
+            valgrind \
+              --tool=callgrind \
+              --collect-atstart=no \
+              --toggle-collect="$symbol" \
+              --callgrind-out-file="$out" \
+              "$BIN" "$selected" "$ROUNDS" \
+              >/dev/null 2>&1
+
+            ir=$(awk '/^summary:/ {print $2}' "$out")
+            printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+              "${{ matrix.compiler }}" "$family" "$variant" "$ROUNDS" "$ir" "$checksum" >> "$RESULTS"
+          }
+
+          measure static4 baseline bench_static4_baseline
+          measure static4 factored bench_static4_factored
+          measure static7 baseline bench_static7_baseline
+          measure static7 factored bench_static7_factored
+          measure runtime7 baseline bench_runtime7_baseline
+          measure runtime7 factored bench_runtime7_factored
+
+          cat "$RESULTS"
+
+          {
+            echo "### ${{ matrix.compiler }}"
+            echo
+            echo '| Family | Direct Ir | Factored Ir | Delta | Delta % |'
+            echo '|---|---:|---:|---:|---:|'
+            for family in static4 static7 runtime7
+            do
+              direct=$(awk -F '\t' -v f="$family" '$2 == f && $3 == "baseline" {print $5}' "$RESULTS")
+              factored=$(awk -F '\t' -v f="$family" '$2 == f && $3 == "factored" {print $5}' "$RESULTS")
+              awk -v f="$family" -v d="$direct" -v a="$factored" 'BEGIN {
+                delta = a - d;
+                pct = d == 0 ? 0 : delta * 100.0 / d;
+                printf "| %s | %d | %d | %+d | %+.6f%% |\n", f, d, a, delta, pct;
+              }'
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: ring-sequence-factoring-${{ matrix.compiler }}
+          path: |
+            build/ring-sequence-factoring/results.tsv
+            build/ring-sequence-factoring/callgrind-*.out
+          if-no-files-found: error
