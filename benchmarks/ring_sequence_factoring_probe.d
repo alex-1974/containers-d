@@ -192,6 +192,13 @@ public:
     }
 }
 
+static assert(BaselineStatic!4.sizeof == FactoredStatic!4.sizeof);
+static assert(BaselineStatic!7.sizeof == FactoredStatic!7.sizeof);
+static assert(BaselineRuntime.sizeof == FactoredRuntime.sizeof);
+static assert(FactoredStatic!4.sizeof == 2 * size_t.sizeof);
+static assert(FactoredStatic!7.sizeof == 2 * size_t.sizeof);
+static assert(FactoredRuntime.sizeof == 3 * size_t.sizeof);
+
 private ulong run(S)(ref S sequence, size_t rounds) nothrow @safe @nogc
 {
     ulong checksum = 0xCBF29CE484222325UL;
