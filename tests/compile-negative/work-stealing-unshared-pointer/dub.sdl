@@ -1,0 +1,5 @@
+name "containers-d-negative-work-stealing-unshared-pointer"
+description "Negative compile gate for work-stealing-unshared-pointer"
+targetType "executable"
+
+dependency "containers-d" path="../../../"
