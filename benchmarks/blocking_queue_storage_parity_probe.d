@@ -76,7 +76,7 @@ extern(C) ulong bench_candidate(
 
         foreach (_; 0 .. input.length)
         {
-            const value = storage.front;
+            const int value = storage.front;
             storage.popFront();
             checksum = mix(checksum, value);
         }
@@ -110,12 +110,59 @@ extern(C) ulong bench_manual(
     return checksum;
 }
 
+private ulong verifyStepwise(
+    scope const(int)[] input,
+    size_t rounds)
+{
+    auto candidate = RingBuffer!int(capacity);
+    auto manual = ManualRing(capacity);
+
+    ulong checksum = 0xCBF29CE484222325UL;
+
+    foreach (round; 0 .. rounds)
+    {
+        foreach (i, seed; input)
+        {
+            const value =
+                seed ^ cast(int)(round + i);
+
+            const candidateAccepted =
+                candidate.tryPushBack(value);
+            const manualAccepted =
+                manual.tryPushBack(value);
+
+            assert(candidateAccepted == manualAccepted);
+            assert(candidateAccepted);
+        }
+
+        foreach (_; 0 .. input.length)
+        {
+            assert(!candidate.empty);
+            assert(manual.length != 0);
+
+            const int candidateValue = candidate.front;
+            const int manualValue = manual.popFront();
+
+            assert(candidateValue == manualValue);
+
+            candidate.popFront();
+
+            checksum = mix(checksum, candidateValue);
+        }
+
+        assert(candidate.empty);
+        assert(manual.length == 0);
+    }
+
+    return checksum;
+}
+
 void main(string[] args)
 {
     if (args.length != 3)
     {
         stderr.writeln(
-            "usage: blocking-queue-storage-parity <candidate|manual> <rounds>");
+            "usage: blocking-queue-storage-parity <candidate|manual|verify> <rounds>");
         return;
     }
 
@@ -136,6 +183,13 @@ void main(string[] args)
 
     final switch (args[1])
     {
+        case "verify":
+        {
+            writeln("verify ",
+                verifyStepwise(input[], rounds));
+            break;
+        }
+
         case "candidate":
         {
             auto storage = RingBuffer!int(capacity);
