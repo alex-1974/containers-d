@@ -66,8 +66,6 @@ public:
         emplace(&_buffer, capacity);
     }
 
-    @disable this(this);
-
     size_t capacity()
     {
         synchronized (_mutex)
