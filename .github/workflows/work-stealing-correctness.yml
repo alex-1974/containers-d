@@ -45,16 +45,15 @@ jobs:
       - name: Concurrent correctness
         shell: bash
         run: |
-          DFLAGS="-version=ContainersWorkStealingResearchProbe" \
-            dub run \
-              --root=tests/work-stealing-correctness \
-              --compiler="$DC" \
-              --force
+          dub run \
+            --root=tests/work-stealing-correctness \
+            --compiler="$DC" \
+            --force
 
       - name: Concurrent correctness with DIP1000
         shell: bash
         run: |
-          DFLAGS="-preview=dip1000 -version=ContainersWorkStealingResearchProbe" \
+          DFLAGS="-preview=dip1000" \
             dub run \
               --root=tests/work-stealing-correctness \
               --compiler="$DC" \
