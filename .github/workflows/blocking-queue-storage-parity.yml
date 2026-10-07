@@ -131,8 +131,31 @@ jobs:
 
           measure candidate bench_candidate
           measure manual bench_manual
+          measure candidate-push bench_candidate_push_only
+          measure manual-push bench_manual_push_only
+          measure candidate-pop bench_candidate_pop_only
+          measure manual-pop bench_manual_pop_only
 
           cat "$RESULTS"
+
+          compare_pair() {
+            candidate_name="$1"
+            manual_name="$2"
+            label="$3"
+
+            candidate=$(awk -F '\t' -v v="$candidate_name" '$2 == v {print $4}' "$RESULTS")
+            manual=$(awk -F '\t' -v v="$manual_name" '$2 == v {print $4}' "$RESULTS")
+
+            awk -v label="$label" -v c="$candidate" -v m="$manual" 'BEGIN {
+              delta = c - m;
+              pct = m == 0 ? 0 : delta * 100.0 / m;
+              printf "%s manual Ir=%d candidate Ir=%d delta=%+d (%+.6f%%)\n", label, m, c, delta, pct;
+            }'
+          }
+
+          compare_pair candidate manual combined
+          compare_pair candidate-push manual-push push
+          compare_pair candidate-pop manual-pop pop
 
           candidate=$(awk -F '\t' '$2 == "candidate" {print $4}' "$RESULTS")
           manual=$(awk -F '\t' '$2 == "manual" {print $4}' "$RESULTS")
@@ -140,7 +163,6 @@ jobs:
           awk -v c="$candidate" -v m="$manual" 'BEGIN {
             delta = c - m;
             pct = m == 0 ? 0 : delta * 100.0 / m;
-            printf "manual Ir=%d\ncandidate Ir=%d\ndelta=%+d (%+.6f%%)\n", m, c, delta, pct;
 
             # Research guard only. Any material delta is investigated before
             # production; fail here only on an obviously off-class result.
