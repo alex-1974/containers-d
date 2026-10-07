@@ -170,6 +170,184 @@ private void lastItemRace()
     assert(!queue.steal().found);
 }
 
+version (ContainersWorkStealingResearchProbe)
+{
+    private void markedTopOwnerBatchOverlap()
+    {
+        auto queue =
+            new ResearchWorkStealingDeque!(
+                ulong,
+                8);
+
+        foreach (value; 1UL .. 9UL)
+            assert(queue.tryPush(value));
+
+        queue.researchEnableBatchPause();
+
+        ulong[4] stolen;
+        shared size_t taken;
+
+        auto thief =
+            new Thread({
+                const count =
+                    queue.stealBatch(stolen[]);
+                atomicStore!(MemoryOrder.rel)(
+                    taken,
+                    count);
+            });
+
+        thief.start();
+
+        while (!queue.researchBatchMarkedSnapshot())
+        {
+        }
+
+        auto releaser =
+            new Thread({
+                while (
+                    queue.researchOwnerBusyRetriesSnapshot() ==
+                    0)
+                {
+                }
+
+                queue.researchReleaseBatchPause();
+            });
+
+        releaser.start();
+
+        const owner =
+            queue.pop();
+
+        releaser.join();
+        thief.join();
+
+        assert(
+            queue.researchOwnerBusyRetriesSnapshot() >
+            0);
+
+        assert(
+            atomicLoad!(MemoryOrder.acq)(
+                taken) ==
+            4);
+
+        assert(stolen[0] == 1);
+        assert(stolen[1] == 2);
+        assert(stolen[2] == 3);
+        assert(stolen[3] == 4);
+
+        assert(owner.found);
+        assert(owner.value == 8);
+
+        auto next = queue.steal();
+        assert(next.found);
+        assert(next.value == 5);
+    }
+}
+
+private void nearCapacityConcurrentRefill()
+{
+    enum size_t capacity = 256;
+    enum size_t total = 50_000;
+
+    auto queue =
+        new ResearchWorkStealingDeque!(
+            ulong,
+            capacity);
+
+    shared uint[total] seen;
+    shared ulong consumed;
+
+    foreach (value; 1UL .. cast(ulong) capacity + 1)
+        assert(queue.tryPush(value));
+
+    auto thief =
+        new Thread({
+            size_t emptySpins;
+
+            while (
+                atomicLoad!(
+                    MemoryOrder.acq)(
+                        consumed) <
+                total)
+            {
+                const result =
+                    queue.steal();
+
+                if (!result.found)
+                {
+                    ++emptySpins;
+
+                    if (
+                        emptySpins >
+                        20_000_000)
+                    {
+                        break;
+                    }
+
+                    continue;
+                }
+
+                emptySpins = 0;
+
+                assert(
+                    result.value >= 1 &&
+                    result.value <= total);
+
+                const index =
+                    cast(size_t)(
+                        result.value - 1);
+
+                const prior =
+                    atomicFetchAdd!(
+                        MemoryOrder.seq)(
+                            seen[index],
+                            1u);
+
+                assert(prior == 0);
+
+                atomicFetchAdd!(
+                    MemoryOrder.seq)(
+                        consumed,
+                        1UL);
+            }
+        });
+
+    thief.start();
+
+    foreach (value;
+             cast(ulong) capacity + 1 ..
+             cast(ulong) total + 1)
+    {
+        size_t fullSpins;
+
+        while (!queue.tryPush(value))
+        {
+            ++fullSpins;
+            assert(fullSpins < 20_000_000);
+        }
+    }
+
+    thief.join();
+
+    assert(
+        atomicLoad!(
+            MemoryOrder.acq)(
+                consumed) ==
+        total);
+
+    foreach (ref count; seen)
+    {
+        assert(
+            atomicLoad!(
+                MemoryOrder.raw)(
+                    count) ==
+            1);
+    }
+
+    assert(!queue.steal().found);
+    assert(!queue.pop().found);
+}
+
 private void multiThiefExactAccounting()
 {
     auto queue =
@@ -275,4 +453,8 @@ void main()
     safeSurfaceProbe();
     lastItemRace();
     multiThiefExactAccounting();
+    nearCapacityConcurrentRefill();
+
+    version (ContainersWorkStealingResearchProbe)
+        markedTopOwnerBatchOverlap();
 }
