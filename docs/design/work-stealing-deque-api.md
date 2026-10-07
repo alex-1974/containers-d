@@ -1,6 +1,6 @@
 # Work-stealing deque public API qualification
 
-Status: production-promotion candidate; not frozen  
+Status: qualified production API; frozen for the first public surface  
 Tracking: issue #38
 
 ## Public module and type
@@ -224,17 +224,25 @@ be selected privately if semantics and performance are requalified.
 - size/empty/full snapshots;
 - generalized MPSC/MPMC semantics.
 
-## API freeze gate
+## API freeze result
 
-Before freezing the candidate public surface:
+The first public surface is frozen for production promotion.
 
-1. prove non-copy/non-assign/non-move source forms fail on DMD/LDC;
-2. prove elaborate-copy/postblit T is rejected;
-3. keep exact x86_64/AArch64 correctness qualification;
-4. pass isolated P08e codegen/layout parity;
-5. pass stable physical-core performance qualification;
-6. compile an external package consumer against the candidate surface;
-7. render Ddoc and audit protocol-safety wording.
+Qualification completed:
 
-Only after those gates should a clean production branch expose the module and
-package-root export.
+1. non-copy, non-assignment, non-move and pass-by-value forms are rejected
+   on the controlled DMD/LDC matrix;
+2. destructor-owning, postblit and unshared-pointer element forms are
+   rejected;
+3. native x86_64 and AArch64 concurrent correctness is qualified;
+4. pinned-P08e DMD/LDC retired-instruction parity is exact;
+5. native AArch64 normalized instruction streams are exact;
+6. balanced four-physical-core AArch64 contention shows no material
+   regression;
+7. package-root and exported-archive consumers compile and run;
+8. Ddoc and release builds pass;
+9. the six controlled compiler versions and Linux/Windows/macOS promotion
+   matrix pass.
+
+Future API additions require their own semantic and performance evidence.
+The first surface intentionally remains narrow.
