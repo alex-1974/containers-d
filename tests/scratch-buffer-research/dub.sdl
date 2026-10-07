@@ -1,0 +1,5 @@
+name "containers-d-scratch-buffer-research"
+description "External research consumer for M6 ScratchBuffer semantics"
+targetType "executable"
+
+dependency "containers-d" path="../../"
