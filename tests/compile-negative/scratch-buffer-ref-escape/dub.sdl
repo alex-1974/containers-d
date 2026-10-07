@@ -1,0 +1,5 @@
+name "containers-d-negative-scratch-buffer-ref-escape"
+description "Negative compile gate for scratch-buffer-ref-escape"
+targetType "executable"
+
+dependency "containers-d" path="../../../"
