@@ -1020,7 +1020,7 @@ unittest
         OverAligned64 value;
         value.value = 17;
         assert(current.buffer.tryPushBack(value));
-        const address = cast(size_t) &current.buffer.front;
+        const address = cast(size_t) &current.buffer[0];
         assert(address % OverAligned64.alignof == 0);
     }
 }
