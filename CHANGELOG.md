@@ -17,6 +17,14 @@ The project follows Semantic Versioning for published releases.
   storage qualification for non-trivial element types.
 - Scalar specializations selected automatically at compile time to retain
   consumer-local runtime and build/code-size quality.
+- `WorkStealingDeque!(T, Capacity)`, a bounded fixed-capacity
+  single-owner / multi-thief concurrent deque with owner `tryPush`/`pop`,
+  thief `steal`/`stealBatch`, and caller-owned batch output.
+- Explicit concurrent identity: copy, move, assignment, and pass-by-value forms
+  are rejected; `.init` is a valid empty deque.
+- `@safe @nogc nothrow` hot operations with a narrow internal ordering
+  boundary, native x86_64/AArch64 correctness qualification, and pinned P08e
+  code-generation/performance evidence.
 
 ## [0.1.1] - 2026-10-07
 
