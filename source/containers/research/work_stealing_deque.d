@@ -65,7 +65,7 @@ enum bool isWorkStealingTransportElement(T) =
  * exposes no pointer, and owns no element lifetime.
  */
 private void workStealingSeqCstBarrier(
-    shared int* fenceWord)
+    scope shared int* fenceWord)
     @trusted @nogc nothrow
 {
     version (LDC)
