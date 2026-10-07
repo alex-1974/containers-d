@@ -96,6 +96,17 @@ jobs:
             test "$verify" != "18446744073709551615"
             test "$verify" = "$candidate"
             test "$candidate" = "$manual"
+
+            candidate_push=$("$BIN" candidate-push "$probeRounds" | awk '{print $2}')
+            manual_push=$("$BIN" manual-push "$probeRounds" | awk '{print $2}')
+            candidate_pop=$("$BIN" candidate-pop "$probeRounds" | awk '{print $2}')
+            manual_pop=$("$BIN" manual-pop "$probeRounds" | awk '{print $2}')
+
+            echo "rounds=$probeRounds push candidate=$candidate_push manual=$manual_push"
+            echo "rounds=$probeRounds pop candidate=$candidate_pop manual=$manual_pop"
+
+            test "$candidate_push" = "$manual_push"
+            test "$candidate_pop" = "$manual_pop"
           done
 
       - name: Measure storage composition
