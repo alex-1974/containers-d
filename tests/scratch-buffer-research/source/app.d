@@ -4,8 +4,9 @@ import containers.research.scratch_buffer : ResearchScratchBuffer;
 
 private void exerciseReuse() @safe @nogc nothrow
 {
-    auto scratch = ResearchScratchBuffer!int(8);
+    ResearchScratchBuffer!int scratch;
 
+    assert(scratch.tryReserve(8));
     const initialCapacity = scratch.capacity;
 
     foreach (cycle; 0 .. 64)
@@ -31,6 +32,13 @@ private void exerciseReuse() @safe @nogc nothrow
     assert(scratch.empty);
     assert(scratch.capacity == initialCapacity);
     assert(scratch.highWater == initialCapacity);
+
+    assert(scratch.tryReserve(initialCapacity * 2));
+    assert(scratch.capacity == initialCapacity * 2);
+
+    assert(scratch.tryPushBack(7));
+    assert(!scratch.tryReserve(initialCapacity * 4));
+    assert(scratch.capacity == initialCapacity * 2);
 }
 
 void main()
