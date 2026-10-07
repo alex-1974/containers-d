@@ -4,7 +4,7 @@ import containers.research.blocking_queue :
     BlockingQueuePopStatus,
     BlockingQueuePushResult,
     ResearchBlockingQueue;
-import core.atomic : atomicLoad, atomicStore;
+import core.atomic : atomicLoad, atomicOp, atomicStore;
 import core.thread : Thread;
 
 private void spinUntil(scope bool delegate() predicate)
@@ -52,20 +52,17 @@ private void testCloseWakeAll()
 
     enum size_t count = 4;
     Thread[count] consumers;
-    bool[count] closedResults;
-
-    Thread makeConsumer(size_t index)
-    {
-        return new Thread({
-            auto result = queue.waitPop();
-            closedResults[index] =
-                result.status == BlockingQueuePopStatus.closed;
-        });
-    }
+    shared size_t closedCount;
 
     foreach (i; 0 .. count)
     {
-        consumers[i] = makeConsumer(i);
+        consumers[i] = new Thread({
+            auto result = queue.waitPop();
+
+            if (result.status == BlockingQueuePopStatus.closed)
+                atomicOp!"+="(closedCount, cast(size_t) 1);
+        });
+
         consumers[i].start();
     }
 
@@ -77,9 +74,7 @@ private void testCloseWakeAll()
     foreach (consumer; consumers)
         consumer.join();
 
-    foreach (closed; closedResults)
-        assert(closed);
-
+    assert(atomicLoad(closedCount) == count);
     assert(queue.tryPush(1) == BlockingQueuePushResult.closed);
 }
 
