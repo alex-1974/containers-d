@@ -1,0 +1,235 @@
+name: WorkStealingDeque Promotion Gate
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - source/containers/package.d
+      - source/containers/work_stealing_deque.d
+      - source/containers/internal/element_lifetime.d
+      - tests/consumer/**
+      - tests/work-stealing-correctness/**
+      - tests/compile-negative/work-stealing-*/**
+      - .github/workflows/work-stealing-promotion-gate.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compiler-matrix:
+    name: WorkStealingDeque / ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - dmd-2.111.0
+          - dmd-2.112.1
+          - dmd-2.113.0
+          - ldc-1.41.0
+          - ldc-1.42.0
+          - ldc-1.43.0
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ${{ matrix.compiler }}
+          dub: 1.40.0
+
+      - name: Compiler versions
+        shell: bash
+        run: |
+          "$DC" --version
+          dub --version
+
+      - name: Unit tests
+        shell: bash
+        run: dub test --compiler="$DC" --force
+
+      - name: Unit tests with DIP1000
+        shell: bash
+        run: DFLAGS="-unittest -preview=dip1000" dub test --compiler="$DC" --force
+
+      - name: Public consumer
+        shell: bash
+        run: dub run --root=tests/consumer --compiler="$DC" --force
+
+      - name: Public consumer with DIP1000
+        shell: bash
+        run: DFLAGS="-preview=dip1000" dub run --root=tests/consumer --compiler="$DC" --force
+
+      - name: Concurrent correctness
+        shell: bash
+        run: dub run --root=tests/work-stealing-correctness --compiler="$DC" --force
+
+      - name: Concurrent correctness with DIP1000
+        shell: bash
+        run: DFLAGS="-preview=dip1000" dub run --root=tests/work-stealing-correctness --compiler="$DC" --force
+
+      - name: Identity and element rejection
+        shell: bash
+        run: |
+          for root in \
+            tests/compile-negative/work-stealing-copy \
+            tests/compile-negative/work-stealing-assign \
+            tests/compile-negative/work-stealing-pass-by-value \
+            tests/compile-negative/work-stealing-move \
+            tests/compile-negative/work-stealing-unsupported-element \
+            tests/compile-negative/work-stealing-postblit-element \
+            tests/compile-negative/work-stealing-unshared-pointer
+          do
+            if dub build \
+                --root="$root" \
+                --compiler="$DC" \
+                --force; then
+              echo "Expected invalid WorkStealingDeque form to fail: $root"
+              false
+            fi
+          done
+
+      - name: Release build
+        shell: bash
+        run: dub build --build=release --compiler="$DC" --force
+
+      - name: Documentation build
+        if: matrix.compiler == 'dmd-2.111.0'
+        shell: bash
+        run: dub build --build=docs --compiler="$DC" --force
+
+  portability:
+    name: WorkStealingDeque portability / ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux ARM64
+            os: ubuntu-24.04-arm
+          - name: Windows x64
+            os: windows-latest
+          - name: macOS Intel
+            os: macos-15-intel
+          - name: macOS ARM64
+            os: macos-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install LDC
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ldc-latest
+
+      - name: Platform information
+        shell: bash
+        run: |
+          echo "RUNNER_OS=$RUNNER_OS"
+          echo "RUNNER_ARCH=$RUNNER_ARCH"
+          uname -a || true
+          "$DC" --version
+          dub --version
+
+      - name: Unit tests
+        shell: bash
+        run: dub test --compiler="$DC" --force
+
+      - name: Public consumer
+        shell: bash
+        run: dub run --root=tests/consumer --compiler="$DC" --force
+
+      - name: Native concurrent correctness on Linux ARM64
+        if: matrix.name == 'Linux ARM64'
+        shell: bash
+        run: dub run --root=tests/work-stealing-correctness --compiler="$DC" --force
+
+      - name: Release build
+        shell: bash
+        run: dub build --build=release --compiler="$DC" --force
+
+  package-boundary:
+    name: WorkStealingDeque package root / DMD 2.111.0
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install DMD
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: dmd-2.111.0
+          dub: 1.40.0
+
+      - name: Build exported archive
+        shell: bash
+        run: |
+          mkdir -p build/release-package
+          git archive HEAD | tar -xf - -C build/release-package
+
+          test -f build/release-package/source/containers/package.d
+          test -f build/release-package/source/containers/work_stealing_deque.d
+
+          for forbidden in \
+            .github docs evidence tests benchmarks \
+            AGENTS.md CONTRIBUTING.md ROADMAP.md RELEASING.md SECURITY.md
+          do
+            test ! -e "build/release-package/$forbidden"
+          done
+
+      - name: Test exported package
+        shell: bash
+        run: |
+          (
+            cd build/release-package
+            dub test --compiler="$DC" --force
+            dub build --build=release --compiler="$DC" --force
+          )
+
+      - name: Consume package-root WorkStealingDeque from archive
+        shell: bash
+        run: |
+          mkdir -p build/archive-consumer/source
+
+          cat > build/archive-consumer/dub.sdl <<'EOF'
+          name "containers-d-work-stealing-archive-consumer"
+          targetType "executable"
+          dependency "containers-d" path="../release-package"
+          EOF
+
+          cat > build/archive-consumer/source/app.d <<'EOF'
+          import containers :
+              WorkStealingDeque,
+              WorkStealingTakeResult;
+
+          void main() @safe @nogc nothrow
+          {
+              WorkStealingDeque!(ulong, 8) queue;
+              assert(queue.tryPush(10));
+              assert(queue.tryPush(20));
+
+              WorkStealingTakeResult!ulong stolen = queue.steal();
+              assert(stolen.found);
+              assert(stolen.value == 10);
+
+              auto owner = queue.pop();
+              assert(owner.found);
+              assert(owner.value == 20);
+
+              ulong[4] batch;
+              assert(queue.stealBatch(batch[]) == 0);
+          }
+          EOF
+
+          dub run \
+            --root=build/archive-consumer \
+            --compiler="$DC" \
+            --force
