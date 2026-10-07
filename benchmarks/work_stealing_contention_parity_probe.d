@@ -12,6 +12,15 @@ import core.atomic :
     atomicStore;
 import core.thread : Thread;
 import core.time : MonoTime;
+
+version (linux)
+{
+    import core.sys.linux.sched :
+        CPU_SET,
+        cpu_set_t,
+        sched_getcpu,
+        sched_setaffinity;
+}
 import std.algorithm : sort;
 import std.conv : to;
 import std.stdio : stderr, writeln;
@@ -22,6 +31,40 @@ enum size_t batchWidth = 8;
 
 alias Candidate = ResearchWorkStealingDeque!(ulong, capacity);
 alias Reference = MarkedTopBatchBoundedWorkStealingDeque!(ulong, logSize);
+
+private void pinCurrentThread(size_t cpu)
+{
+    version (linux)
+    {
+        cpu_set_t mask = cpu_set_t.init;
+
+        CPU_SET(cpu, &mask);
+
+        if (sched_setaffinity(
+                0,
+                cpu_set_t.sizeof,
+                &mask) != 0)
+        {
+            throw new Exception(
+                "sched_setaffinity failed");
+        }
+
+        const actual = sched_getcpu();
+
+        if (
+            actual < 0 ||
+            cast(size_t) actual != cpu)
+        {
+            throw new Exception(
+                "affinity verification failed");
+        }
+    }
+    else
+    {
+        throw new Exception(
+            "Linux affinity required");
+    }
+}
 
 private ulong xorOneTo(ulong n)
     @safe @nogc nothrow
@@ -41,8 +84,10 @@ private double runTransfer(Q)(
     size_t total)
 {
     assert(thiefCount > 0);
-    assert(thiefCount <= 4);
+    assert(thiefCount <= 3);
     assert(total > capacity);
+
+    pinCurrentThread(0);
 
     auto queue = new Q;
 
@@ -58,6 +103,8 @@ private double runTransfer(Q)(
     {
         threads[index] =
             new Thread({
+                pinCurrentThread(index + 1);
+
                 while (!atomicLoad!(MemoryOrder.acq)(start))
                 {
                 }
