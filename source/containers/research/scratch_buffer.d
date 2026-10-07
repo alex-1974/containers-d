@@ -157,6 +157,31 @@ public:
     }
 
     /**
+     * Ensures at least minCapacity backing slots without relocating live T.
+     *
+     * Returns true when capacity was already sufficient or when an empty
+     * buffer successfully established the requested larger capacity.
+     *
+     * Returns false when growth is required while live elements exist.
+     * No allocation or mutation occurs in that case.
+     *
+     * Successful growth invalidates all previously borrowed slices, including
+     * empty borrows. Capacity grows exactly to minCapacity in Stage 2; no
+     * geometric growth policy is embedded in the container.
+     */
+    bool tryReserve(size_t minCapacity) @safe @nogc nothrow
+    {
+        if (minCapacity <= capacity)
+            return true;
+
+        if (!empty)
+            return false;
+
+        _storage.replaceEmptyCapacity(minCapacity);
+        return true;
+    }
+
+    /**
      * Appends one live element when spare established capacity exists.
      *
      * Returns false when full. No allocation or growth is attempted.
@@ -290,6 +315,63 @@ unittest
     assert(scratch[].ptr is ptrBefore);
     assert(scratch[] == [40]);
     assert(scratch.highWater == 3);
+}
+
+unittest
+{
+    ResearchScratchBuffer!int scratch;
+
+    assert(scratch.capacity == 0);
+    assert(scratch.tryReserve(8));
+    assert(scratch.capacity == 8);
+    assert(scratch.empty);
+
+    const firstAddress = scratch[].ptr;
+
+    // No-op reserve keeps established storage.
+    assert(scratch.tryReserve(4));
+    assert(scratch.capacity == 8);
+    assert(scratch[].ptr is firstAddress);
+
+    assert(scratch.tryPushBack(1));
+    assert(scratch.tryPushBack(2));
+
+    // Growth is explicitly rejected while T values are live.
+    assert(!scratch.tryReserve(16));
+    assert(scratch.capacity == 8);
+    assert(scratch[] == [1, 2]);
+
+    scratch.reset();
+
+    assert(scratch.tryReserve(16));
+    assert(scratch.capacity == 16);
+    assert(scratch.empty);
+
+    assert(scratch.tryPushBack(3));
+    assert(scratch[] == [3]);
+}
+
+unittest
+{
+    // Empty-only reserve must remain callable from @safe @nogc nothrow code.
+    static assert(__traits(compiles, {
+        () @safe @nogc nothrow {
+            ResearchScratchBuffer!int scratch;
+
+            assert(scratch.tryReserve(32));
+            assert(scratch.capacity == 32);
+            assert(scratch.tryPushBack(7));
+
+            // Existing capacity does not require relocation.
+            assert(scratch.tryReserve(16));
+
+            // Required growth with live data is rejected.
+            assert(!scratch.tryReserve(64));
+
+            scratch.reset();
+            assert(scratch.tryReserve(64));
+        }();
+    }));
 }
 
 unittest
