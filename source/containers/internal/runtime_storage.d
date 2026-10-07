@@ -65,6 +65,90 @@ private struct AlignedStorageBackend
 }
 
 /**
+ * Injects runtime-storage slot access into a consuming aggregate that owns a
+ * `RuntimeStorageOwner!T _storage` field.
+ *
+ * This is the runtime counterpart to InlineRawStorageOps. DMD 2.111 can leave
+ * imported RuntimeStorageOwner slot-access helpers out-of-line in a hot
+ * consumer path even when the arithmetic itself is trivial. The typed mixin
+ * generates only pointer/sanitation operations in the consuming aggregate;
+ * allocation, GC registration and unique ownership remain in
+ * RuntimeStorageOwner.
+ *
+ * The mixin injects no state and is package-internal.
+ */
+package(containers) mixin template RuntimeStorageAccessOps(
+    T,
+    bool HasIndirections = hasIndirections!T)
+{
+package(containers):
+    pragma(inline, true)
+    T* runtimeSlotPointer(size_t physicalIndex)
+        return scope @trusted @nogc nothrow
+    {
+        assert(physicalIndex < _storage._capacity);
+
+        return cast(T*) (
+            _storage._bytes.ptr +
+            physicalIndex * T.sizeof);
+    }
+
+    pragma(inline, true)
+    const(T)* runtimeSlotPointer(size_t physicalIndex)
+        const return scope @trusted @nogc nothrow
+    {
+        assert(physicalIndex < _storage._capacity);
+
+        return cast(const(T)*) (
+            _storage._bytes.ptr +
+            physicalIndex * T.sizeof);
+    }
+
+    pragma(inline, true)
+    T[] runtimeSlotSlice(
+        size_t physicalStart,
+        size_t count)
+        return scope @trusted @nogc nothrow
+    {
+        if (count == 0)
+            return null;
+
+        assert(physicalStart < _storage._capacity);
+        assert(count <= _storage._capacity - physicalStart);
+
+        return runtimeSlotPointer(physicalStart)[0 .. count];
+    }
+
+    pragma(inline, true)
+    const(T)[] runtimeSlotSlice(
+        size_t physicalStart,
+        size_t count)
+        const return scope @trusted @nogc nothrow
+    {
+        if (count == 0)
+            return null;
+
+        assert(physicalStart < _storage._capacity);
+        assert(count <= _storage._capacity - physicalStart);
+
+        return runtimeSlotPointer(physicalStart)[0 .. count];
+    }
+
+    pragma(inline, true)
+    void runtimeClearVacatedSlot(size_t physicalIndex)
+        @safe @nogc nothrow
+    {
+        assert(physicalIndex < _storage._capacity);
+
+        static if (HasIndirections)
+        {
+            const begin = physicalIndex * T.sizeof;
+            _storage._bytes[begin .. begin + T.sizeof] = 0;
+        }
+    }
+}
+
+/**
  * Move-only owner for one aligned runtime storage block.
  *
  * The owner manages storage bytes only. It does not know which slots currently
@@ -75,9 +159,15 @@ package(containers) struct RuntimeStorageOwner(
     T,
     Backend = AlignedStorageBackend)
 {
-private:
+package(containers):
+    // Package-visible so typed local-codegen mixins can access the raw owner
+    // representation without introducing imported accessor calls. This remains
+    // an internal implementation detail; callers outside containers.* cannot
+    // observe these fields.
     ubyte[] _bytes;
     size_t _capacity;
+
+private:
 
     void registerRangeIfNeeded() scope @safe @nogc nothrow
     {
@@ -154,6 +244,23 @@ public:
         _bytes = block;
         _capacity = capacity;
         registerRangeIfNeeded();
+    }
+
+    /**
+     * Replaces this owner's raw allocation with storage for newCapacity T
+     * slots.
+     *
+     * The owner does not track live T objects. The consuming container must
+     * guarantee that no T lifetime remains in this storage before calling.
+     * This primitive supports owners such as ScratchBuffer that re-establish
+     * capacity only after all live element lifetimes have ended. It is not
+     * public API.
+     */
+    package(containers) void replaceEmptyCapacity(
+        size_t newCapacity) scope @safe @nogc nothrow
+    {
+        releaseStorage();
+        initialize(newCapacity);
     }
 
     /**
@@ -391,6 +498,32 @@ unittest
         Owner target;
         target = source;
     }));
+}
+
+unittest
+{
+    // replaceEmptyCapacity performs exactly one release and one new
+    // acquisition; the consuming container is responsible for ensuring that
+    // no live T objects remain before replacement.
+    alias Owner = RuntimeStorageOwner!(int, CountingStorageBackend);
+
+    CountingStorageBackend.reset();
+
+    {
+        auto owner = Owner(4);
+
+        assert(CountingStorageBackend.acquisitions == 1);
+        assert(CountingStorageBackend.releases == 0);
+
+        owner.replaceEmptyCapacity(9);
+
+        assert(owner.capacity == 9);
+        assert(CountingStorageBackend.acquisitions == 2);
+        assert(CountingStorageBackend.releases == 1);
+    }
+
+    assert(CountingStorageBackend.acquisitions == 2);
+    assert(CountingStorageBackend.releases == 2);
 }
 
 unittest
