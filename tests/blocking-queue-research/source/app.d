@@ -54,14 +54,18 @@ private void testCloseWakeAll()
     Thread[count] consumers;
     bool[count] closedResults;
 
-    foreach (i; 0 .. count)
+    Thread makeConsumer(size_t index)
     {
-        consumers[i] = new Thread({
+        return new Thread({
             auto result = queue.waitPop();
-            closedResults[i] =
+            closedResults[index] =
                 result.status == BlockingQueuePopStatus.closed;
         });
+    }
 
+    foreach (i; 0 .. count)
+    {
+        consumers[i] = makeConsumer(i);
         consumers[i].start();
     }
 
@@ -148,9 +152,9 @@ private void testMpmcExactAccounting()
 
     int[][consumerCount] consumed;
 
-    foreach (producerIndex; 0 .. producerCount)
+    Thread makeProducer(size_t producerIndex)
     {
-        producers[producerIndex] = new Thread({
+        return new Thread({
             const base = cast(int)producerIndex * perProducer;
 
             foreach (i; 0 .. perProducer)
@@ -176,13 +180,11 @@ private void testMpmcExactAccounting()
                 }
             }
         });
-
-        producers[producerIndex].start();
     }
 
-    foreach (consumerIndex; 0 .. consumerCount)
+    Thread makeConsumer(size_t consumerIndex)
     {
-        consumers[consumerIndex] = new Thread({
+        return new Thread({
             for (;;)
             {
                 auto result = queue.waitPop();
@@ -193,7 +195,17 @@ private void testMpmcExactAccounting()
                 consumed[consumerIndex] ~= result.value;
             }
         });
+    }
 
+    foreach (producerIndex; 0 .. producerCount)
+    {
+        producers[producerIndex] = makeProducer(producerIndex);
+        producers[producerIndex].start();
+    }
+
+    foreach (consumerIndex; 0 .. consumerCount)
+    {
+        consumers[consumerIndex] = makeConsumer(consumerIndex);
         consumers[consumerIndex].start();
     }
 
