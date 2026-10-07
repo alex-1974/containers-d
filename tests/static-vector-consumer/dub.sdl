@@ -1,0 +1,5 @@
+name "containers-d-static-vector-consumer"
+description "External consumer smoke test for StaticVector promotion surface"
+targetType "executable"
+
+dependency "containers-d" path="../../"

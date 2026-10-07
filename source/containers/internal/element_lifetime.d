@@ -25,11 +25,16 @@ package(containers) enum bool elementCopyConstructible(T) =
     });
 
 /**
- * Whether ordinary language move construction of T is accepted from @safe
- * code.
+ * Whether the current frontend accepts ordinary language move construction of
+ * T from @safe code through __rvalue(source).
  *
- * Placement construction into raw storage remains a separate trusted
- * operation. This trait only classifies T's own move-construction contract.
+ * This is deliberately a compiler-qualified capability rather than a timeless
+ * property of T. Frontend 2.112+ rejects some __rvalue(local) expressions from
+ * @safe code even when T's declared move constructor is @safe.
+ *
+ * Placement construction into raw storage remains a separate audited bridge.
+ * containers-d uses this capability only to decide whether that bridge may be
+ * exposed as @trusted/@safe-callable or must remain @system.
  */
 package(containers) enum bool safeLanguageMoveConstructible(T) =
     __traits(compiles, {
@@ -216,8 +221,11 @@ unittest
 
     static assert(!elementCopyConstructible!MoveOnly);
     static assert(hasLanguageMoveConstructor!MoveOnly);
-    static assert(safeLanguageMoveConstructible!MoveOnly);
 
+    // safeLanguageMoveConstructible is intentionally frontend-qualified.
+    // DMD/LDC based on frontend 2.111 accept this __rvalue form from @safe
+    // code; frontend 2.112+ may reject it independently of the move
+    // constructor's own @safe annotation.
     static assert(elementNeedsDestruction!WithDestructor);
     static assert(elementHasIndirections!WithIndirection);
 }
@@ -225,18 +233,23 @@ unittest
 
 unittest
 {
-    // Safe language move remains callable through the shared raw-slot bridge
-    // from @safe code. Use a null pointer only in this compile-time probe; the
-    // helper is not executed.
-    static assert(__traits(compiles, {
-        void probe(ref MoveOnly source) @safe
-        {
-            MoveOnly* target = null;
-            if (target !is null)
-                MoveOnlyOps.placementMoveConstruct(
-                    target, source);
-        }
-    }));
+    // The generated bridge must exactly follow the frontend-qualified
+    // safeLanguageMoveConstructible capability. Use a null pointer only in
+    // this compile-time probe; the helper is never executed.
+    enum bool bridgeCallableFromSafe =
+        __traits(compiles, {
+            void probe(ref MoveOnly source) @safe
+            {
+                MoveOnly* target = null;
+                if (target !is null)
+                    MoveOnlyOps.placementMoveConstruct(
+                        target, source);
+            }
+        });
+
+    static assert(
+        bridgeCallableFromSafe ==
+        safeLanguageMoveConstructible!MoveOnly);
 
     // containers-d must not upgrade a @system move constructor to @safe.
     static assert(!__traits(compiles, {

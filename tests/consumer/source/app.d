@@ -1,6 +1,6 @@
 module app;
 
-import containers : RingBuffer, StaticRingBuffer;
+import containers : RingBuffer, StaticRingBuffer, StaticVector;
 
 struct SafeMovable
 {
@@ -20,6 +20,18 @@ struct SafeMovable
 
 private void exerciseSafeCore() @safe @nogc nothrow
 {
+    StaticVector!(int, 4) vector;
+    vector.pushBack(1);
+    vector.pushBack(2);
+    assert(vector.length == 2);
+    assert(vector[] == [1, 2]);
+    vector[1] = 3;
+    assert(vector.back == 3);
+    vector.popBack();
+    assert(vector.length == 1);
+    vector.clear();
+    assert(vector.empty);
+
     StaticRingBuffer!(int, 3) buffer;
 
     assert(buffer.empty);

@@ -6,7 +6,17 @@ The project follows Semantic Versioning for published releases.
 
 ## [Unreleased]
 
-No unreleased changes.
+### Added
+
+- `StaticVector!(T, Capacity)`, a fixed-capacity, variable-length contiguous
+  inline vector with no backing allocation.
+- Borrowed live-prefix access through D slice syntax `vector[]`.
+- Precondition-based `pushBack` plus checked non-overwriting `tryPushBack`,
+  `popBack`, `clear`, front/back and indexed access.
+- Element-aware copy/move/destruction, GC stale-root cleanup and over-aligned
+  storage qualification for non-trivial element types.
+- Scalar specializations selected automatically at compile time to retain
+  consumer-local runtime and build/code-size quality.
 
 ## [0.1.1] - 2026-10-07
 
