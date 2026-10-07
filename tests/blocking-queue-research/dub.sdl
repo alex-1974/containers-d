@@ -1,0 +1,6 @@
+name "containers-d-blocking-queue-research"
+description "External M7 BlockingQueue research consumer"
+targetType "executable"
+versions "ContainersBlockingQueueResearchProbe"
+
+dependency "containers-d" path="../../"
