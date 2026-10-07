@@ -1,6 +1,6 @@
 # StaticVector — promotion contract
 
-Status: promotion candidate; not package-root API yet  
+Status: qualified development candidate; package-root export under promotion  
 Tracking: issue #34  
 Research proof: issue #25 / PR #33
 
@@ -315,4 +315,6 @@ Before package-root export:
 - representative binary/object-size measurement;
 - documentation clearly separates stable type API from research composition.
 
-Only after all gates pass should `module containers` re-export StaticVector.
+`module containers` re-exports StaticVector on the promotion branch so the
+package-boundary gate exercises the intended stable surface. Integration into
+`develop` is permitted only after all promotion gates pass.
