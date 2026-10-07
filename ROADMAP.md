@@ -222,7 +222,7 @@ repository; downstream adoption is a separate concurrency-d project decision.
 
 No public size/empty/full snapshot is admitted in the first API.
 
-## M6 — Reusable contiguous scratch storage — production promotion current
+## M6 — Reusable contiguous scratch storage — complete
 
 Research tracking: issue #27. Research evidence: PR #58.  
 Production tracking: issue #59.
@@ -256,9 +256,48 @@ Architecture decision:
 - keep mathematical/caller-workspace algorithm APIs slice-based;
 - no consumer repository migration is part of this promotion.
 
-Production promotion is clean from current develop and carries only the public
-family, required internal factoring, tests/docs and permanent qualification
-gates.
+Production promotion completed through PR #60 and merged to develop as
+`6b8df935417c1d095df15e24c886b4863f0416ae`.
+
+## M7 — Bounded BlockingQueue over ring storage — current
+
+Tracking: issue #28.
+
+M7 researches a synchronized bounded FIFO family layered over already-qualified
+ring storage. It is deliberately **not** a `threadSafe=true` mode of
+`RingBuffer`.
+
+Initial semantic target:
+
+- fixed runtime capacity established at construction;
+- bounded FIFO storage, initially `RingBuffer!T`;
+- mutex + condition synchronization;
+- non-blocking producer admission with explicit `pushed`, `full`, and
+  `closed` outcomes;
+- blocking consumer wait with explicit value/closed result;
+- idempotent `close()`;
+- close rejects future pushes;
+- close-and-drain: already queued values remain consumable after close;
+- blocked consumers wake when close makes further waiting pointless;
+- condition waits always re-check predicates to tolerate spurious wakeups;
+- no backing-storage allocation during queue operations after construction;
+- first research contract permits multiple producers and multiple consumers
+  under the mutex; topology-specific lock-free families remain separate.
+
+M7 research order:
+
+1. define push/pop result carriers and close/drain state machine;
+2. build the minimal mutex/condition prototype over `RingBuffer!T`;
+3. qualify deterministic empty/full/close/drain/wakeup races;
+4. define destruction/lifetime rules for queues with active waiters;
+5. separate storage-layer overhead from synchronization-layer overhead;
+6. compare 1P1C, MP1C and MPMC contention without claiming lock-free semantics;
+7. decide whether the family deserves production promotion.
+
+The first research element contract may be narrower than the eventual public
+API where that is needed to keep value transfer/lifetime semantics explicit.
+Consumer repositories remain read-only evidence sources; no DCanvas or
+raster-d migration is performed by this milestone.
 
 ## Later candidates
 
