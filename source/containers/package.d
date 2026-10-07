@@ -6,6 +6,7 @@
  * - $(LREF StaticVector): compile-time fixed-capacity contiguous inline vector;
  * - $(LREF StaticRingBuffer): compile-time capacity inline FIFO ring buffer;
  * - $(LREF RingBuffer): runtime capacity FIFO with one owned backing allocation;
+ * - $(LREF ScratchBuffer): reusable runtime-capacity contiguous typed scratch storage;
  * - $(LREF WorkStealingDeque): bounded single-owner / multi-thief concurrent deque.
  */
 module containers;
@@ -13,6 +14,7 @@ module containers;
 public import containers.ring_buffer : StaticRingBuffer;
 public import containers.runtime_ring_buffer : RingBuffer;
 public import containers.static_vector : StaticVector;
+public import containers.scratch_buffer : ScratchBuffer;
 public import containers.work_stealing_deque :
     WorkStealingDeque,
     WorkStealingTakeResult;
@@ -25,6 +27,12 @@ unittest
     auto stolen = concurrent.steal();
     assert(stolen.found);
     assert(stolen.value == 99);
+
+    auto scratch = ScratchBuffer!int(4);
+    assert(scratch.tryPushBack(7));
+    scratch.reset();
+    assert(scratch.capacity == 4);
+    assert(scratch.empty);
 
     StaticVector!(int, 3) vector;
     vector.pushBack(1);

@@ -1,0 +1,5 @@
+name "containers-d-scratch-buffer-lifecycle"
+description "Lifecycle and alignment integration test for ScratchBuffer"
+targetType "executable"
+
+dependency "containers-d" path="../../"
