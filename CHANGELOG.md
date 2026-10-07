@@ -8,6 +8,22 @@ The project follows Semantic Versioning for published releases.
 
 No unreleased changes.
 
+## [0.1.1] - 2026-10-07
+
+### Fixed
+
+- `StaticRingBuffer!(T, Capacity)` now preserves `T.alignof` for over-aligned
+  element types even when the buffer is embedded in another aggregate on
+  compiler/target combinations that do not propagate over-alignment correctly.
+- Pointer-bearing over-aligned inline storage now uses a conservative
+  GC-visible scan shape when runtime base adjustment is required, and vacated
+  slots are still cleared to avoid stale roots.
+
+### Compatibility
+
+- No public API names or operation semantics are changed.
+- The minimum supported D frontend remains 2.111.0.
+
 ## [0.1.0] - 2026-09-27
 
 Initial public development release of the bounded single-threaded ring-buffer
