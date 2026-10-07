@@ -159,9 +159,15 @@ package(containers) struct RuntimeStorageOwner(
     T,
     Backend = AlignedStorageBackend)
 {
-private:
+package(containers):
+    // Package-visible so typed local-codegen mixins can access the raw owner
+    // representation without introducing imported accessor calls. This remains
+    // an internal implementation detail; callers outside containers.* cannot
+    // observe these fields.
     ubyte[] _bytes;
     size_t _capacity;
+
+private:
 
     void registerRangeIfNeeded() scope @safe @nogc nothrow
     {
