@@ -14,6 +14,7 @@ import containers.internal.element_lifetime :
     EndElementLifetimeOps,
     PlacementMoveOps,
     sharedElementCopyConstructible = elementCopyConstructible;
+import containers.internal.ring_sequence : RingSequenceOps;
 import core.lifetime : emplace, forward, moveEmplace;
 import std.traits : hasIndirections, isNested, Unqual;
 
@@ -265,8 +266,7 @@ private:
         Storage _storage = void;
     }
 
-    size_t _head;
-    size_t _length;
+    mixin RingSequenceOps!Capacity;
 
     T* slotPointer(size_t physicalIndex) scope return nothrow @safe @nogc
     {
@@ -352,29 +352,6 @@ private:
             slotPointer(physicalStart)[0 .. count])();
     }
 
-    size_t physicalIndex(size_t logicalIndex) const nothrow @safe @nogc
-    {
-        assert(logicalIndex < Capacity);
-
-        static if ((Capacity & (Capacity - 1)) == 0)
-        {
-            // Measured specialization: for power-of-two capacities both DMD
-            // 2.111 and LDC 1.41 produce fewer retired instructions than the
-            // branch/subtract path. See
-            // evidence/performance/ring-buffer-wraparound.md.
-            return (_head + logicalIndex) & (Capacity - 1);
-        }
-        else
-        {
-            // For non-power-of-two capacities, measured faster than modulo on
-            // both baseline compilers.
-            size_t index = _head + logicalIndex;
-            if (index >= Capacity)
-                index -= Capacity;
-            return index;
-        }
-    }
-
     // Reuse the package-internal language-capability classification while
     // preserving the existing StaticRingBuffer copy contract.
     enum bool elementCopyConstructible =
@@ -412,28 +389,11 @@ private:
         clearVacatedSlot(physicalIndex);
     }
 
-    void advanceHead() nothrow @safe @nogc
-    {
-        ++_head;
-        if (_head == Capacity)
-            _head = 0;
-    }
-
     // Ends the container's ownership of a front slot whose T lifetime has
     // already ended through move construction. No destructor is called here.
     void consumeMovedFront() nothrow @safe @nogc
     {
-        assert(_length > 0);
-
-        --_length;
-        if (_length == 0)
-        {
-            _head = 0;
-        }
-        else
-        {
-            advanceHead();
-        }
+        consumeFrontState();
     }
 
 public:
@@ -745,17 +705,7 @@ public:
         const physical = _head;
         endSlotLifetime(physical);
 
-        --_length;
-        if (_length == 0)
-        {
-            // Canonical empty representation keeps subsequent first insertion
-            // at physical slot zero.
-            _head = 0;
-        }
-        else
-        {
-            advanceHead();
-        }
+        consumeFrontState();
     }
 
     ///
