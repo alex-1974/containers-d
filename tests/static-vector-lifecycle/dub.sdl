@@ -1,0 +1,5 @@
+name "containers-d-static-vector-lifecycle"
+description "Lifecycle and alignment qualification for StaticVector"
+targetType "executable"
+
+dependency "containers-d" path="../../"
