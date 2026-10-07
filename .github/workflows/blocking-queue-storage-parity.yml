@@ -81,13 +81,18 @@ jobs:
           BIN=build/m7-blocking-storage/probe
           ROUNDS=4096
 
-          verify=$("$BIN" verify "$ROUNDS" | awk '{print $2}')
-          candidate=$("$BIN" candidate "$ROUNDS" | awk '{print $2}')
-          manual=$("$BIN" manual "$ROUNDS" | awk '{print $2}')
+          for probeRounds in 1 2 3 4 63 64 65 "$ROUNDS"
+          do
+            verify=$("$BIN" verify "$probeRounds" | awk '{print $2}')
+            candidate=$("$BIN" candidate "$probeRounds" | awk '{print $2}')
+            manual=$("$BIN" manual "$probeRounds" | awk '{print $2}')
 
-          echo "verify=$verify candidate=$candidate manual=$manual"
-          test "$verify" = "$candidate"
-          test "$candidate" = "$manual"
+            echo "rounds=$probeRounds verify=$verify candidate=$candidate manual=$manual"
+
+            test "$verify" != "18446744073709551615"
+            test "$verify" = "$candidate"
+            test "$candidate" = "$manual"
+          done
 
       - name: Measure storage composition
         shell: bash
