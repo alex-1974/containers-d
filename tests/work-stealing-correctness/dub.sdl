@@ -1,0 +1,6 @@
+name "containers-d-work-stealing-correctness"
+description "Concurrent correctness qualification for the production work-stealing deque family"
+targetType "executable"
+versions "ContainersWorkStealingTestHooks"
+
+dependency "containers-d" path="../../"
