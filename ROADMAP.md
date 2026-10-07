@@ -62,30 +62,109 @@ Contract: `docs/design/runtime-ring-buffer-storage.md`.
 
 Evidence: `evidence/performance/runtime-ring-buffer-wraparound.md`.
 
-M3 is complete. The next milestone is deliberately not admitted here: choose
-between release preparation and the next container family using the normal
-issue/milestone planning process.
+M3 is complete.
 
 ## Release v0.1.0 — complete
 
-- froze the first public ring-buffer family;
-- resolved the release-relevant element-type contract for v0.1;
-- aligned stable documentation with the admitted implementation;
-- qualified the six-compiler release matrix;
-- qualified Linux ARM64, Windows x64, macOS Intel and macOS ARM64 portability;
+- released the first public ring-buffer family;
+- qualified the six-compiler and cross-platform release matrix;
 - verified the exported consumer archive;
-- prepared the qualified state for promotion to `main` and annotated tag
-  `v0.1.0`.
+- published annotated tag `v0.1.0`.
 
 Tracking: issue #21.
 
+## Release v0.1.1 — complete
+
+- corrected StaticRingBuffer over-aligned element placement on affected
+  compiler/target combinations;
+- preserved the ordinary-alignment hot path;
+- added over-alignment GC reachability and D-vs-C++ performance qualification;
+- qualified the full release matrix and exported package;
+- published signed annotated tag `v0.1.1`.
+
+Tracking: issues #31 and #32.
+
+## M4 — Consumer-driven container-family architecture — current
+
+Tracking: issue #23.
+
+M4 derives reusable families from concrete workspace consumers rather than
+generalizing the ring buffer into a universal policy container.
+
+### M4.1 — Family model and invariants — complete research
+
+- classify storage/access/lifetime/ownership/thread-topology needs;
+- separate family semantics from reusable internal machinery;
+- keep materially different semantics as distinct public types;
+- preserve consumer-owned domain vocabulary where a wrapper would add cost.
+
+Research evidence remains on its original branches/PRs.
+
+### M4.2 — Internal lifetime/storage foundation — complete
+
+Tracking: issue #29. Promotion: PR #43.
+
+- package-internal element capability/lifetime classification;
+- typed template mixins for placement move and lifetime end;
+- structural raw-slot and reusable-slot storage contracts;
+- package-internal inline-storage proof;
+- zero-overhead qualification on DMD 2.111 and LDC 1.41;
+- no public customization API and no change to released ring semantics.
+
+### M4.3 — StaticVector proof and production promotion — current
+
+Tracking: issues #25 and #34. Research proof: PR #33.
+
+Qualified research evidence:
+
+- fixed-capacity contiguous mechanics against geo-d/geo3-d ExpansionBuffer
+  baselines;
+- representative expansion-algorithm qualification;
+- real geo-d and geo3-d consumer proofs;
+- DMD hot paths instruction-identical to the consumer-local form where
+  compile-time composition is used;
+- lifecycle, GC, over-alignment, borrow and adversarial correctness evidence;
+- build/code-size qualification.
+
+Production promotion admits only the stable `StaticVector!(T, Capacity)` type.
+The research-only scalar composition mixin remains outside the compatibility
+surface.
+
+### M4.4 — Ring family factoring proof
+
+Without changing the public ring APIs:
+
+- test shared ring state/algorithm machinery beneath StaticRingBuffer/RingBuffer;
+- retain their distinct ownership/copy/move contracts;
+- compare generated code and representative workloads with the current
+  implementation;
+- keep the current implementation wherever factoring is not demonstrably
+  zero-cost or otherwise justified.
+
+### M4.5 — Real-consumer adaptation proofs
+
+Demonstrate materially different adaptation modes, including domain-owned
+numeric buffers, synchronized bounded mailboxes, and reusable/pool-backed
+storage, without forcing them behind one public policy type.
+
+### M4.6 — Public customization decision
+
+Only after M4.2-M4.5 evidence:
+
+- expose an advanced customization mechanism only if multiple materially
+  different consumers require it;
+- keep compiler/architecture implementation choices private and automatic;
+- reject policy combinations that change container semantics;
+- qualify diagnostics, template/build cost and binary size.
+
+M4 exits by admitting concrete production families, not a universal framework.
+
 ## Later candidates
 
-- FIFO queues;
-- LIFO/FILO stacks;
-- deque-like structures where justified;
-- SPSC ring buffers;
-- other bounded container primitives.
+- UniqueBuffer / owned contiguous storage where consumer evidence supports it;
+- ScratchBuffer / Arena families;
+- synchronized bounded queues;
+- concurrent work-stealing deque and other explicitly concurrent families.
 
-Later milestones are admitted only when their contracts and consumer need are
-clear.
+Later milestones are admitted only when their contracts, consumers, safety and
+performance gates are explicit.
