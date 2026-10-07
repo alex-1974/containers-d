@@ -1,0 +1,178 @@
+name: M4.4 Runtime Ring Integration Probe
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - source/containers/internal/ring_sequence.d
+      - source/containers/runtime_ring_buffer.d
+      - benchmarks/runtime_ring_buffer_operation_probe.d
+      - .github/workflows/perf-m4-4-runtime-ring-integration.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  instruction-counts:
+    name: Runtime ring integration Ir / ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - dmd-2.111.0
+          - ldc-1.41.0
+
+    steps:
+      - name: Check out candidate
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ${{ matrix.compiler }}
+
+      - name: Install Callgrind
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y valgrind
+
+      - name: Build current and develop probes
+        shell: bash
+        run: |
+          mkdir -p build/m4-4-runtime-ring
+          git fetch origin develop
+          git worktree add --detach build/m4-4-runtime-ring/develop origin/develop
+
+          build_probe() {
+            root="$1"
+            output="$2"
+
+            case "${{ matrix.compiler }}" in
+              dmd-*)
+                "$DC" \
+                  -O \
+                  -release \
+                  -inline \
+                  -boundscheck=off \
+                  -I"$root/source" \
+                  -of="$output" \
+                  benchmarks/runtime_ring_buffer_operation_probe.d \
+                  "$root/source/containers/runtime_ring_buffer.d" \
+                  "$root/source/containers/internal/runtime_storage.d"
+                ;;
+              ldc-*)
+                "$DC" \
+                  -O3 \
+                  -release \
+                  -boundscheck=off \
+                  -I"$root/source" \
+                  -of="$output" \
+                  benchmarks/runtime_ring_buffer_operation_probe.d \
+                  "$root/source/containers/runtime_ring_buffer.d" \
+                  "$root/source/containers/internal/runtime_storage.d"
+                ;;
+            esac
+          }
+
+          build_probe "." build/m4-4-runtime-ring/candidate
+          build_probe build/m4-4-runtime-ring/develop build/m4-4-runtime-ring/baseline
+
+      - name: Verify semantic equivalence
+        shell: bash
+        run: |
+          CANDIDATE=build/m4-4-runtime-ring/candidate
+          BASELINE=build/m4-4-runtime-ring/baseline
+          ROUNDS=8
+
+          for capacity in 63 64
+          do
+            for workload in index pushpop segments mixed
+            do
+              candidate=$("$CANDIDATE" actual "$workload" "$capacity" "$ROUNDS" | awk '{print $2}')
+              baseline=$("$BASELINE" actual "$workload" "$capacity" "$ROUNDS" | awk '{print $2}')
+              echo "capacity=$capacity workload=$workload baseline=$baseline candidate=$candidate"
+              test "$baseline" = "$candidate"
+            done
+          done
+
+      - name: Measure actual runtime-ring hot paths
+        shell: bash
+        run: |
+          CANDIDATE=build/m4-4-runtime-ring/candidate
+          BASELINE=build/m4-4-runtime-ring/baseline
+          ROUNDS=4096
+          OPERATIONS=1048576
+          RESULTS=build/m4-4-runtime-ring/results.tsv
+
+          printf 'compiler\tbuild\tworkload\tcapacity\toperations\tIr\tchecksum\n' > "$RESULTS"
+
+          measure() {
+            build="$1"
+            binary="$2"
+            workload="$3"
+            capacity="$4"
+            symbol="bench_actual_${workload}"
+            out="build/m4-4-runtime-ring/callgrind-${build}-${workload}-${capacity}.out"
+
+            checksum=$("$binary" actual "$workload" "$capacity" "$ROUNDS" | awk '{print $2}')
+
+            valgrind \
+              --tool=callgrind \
+              --collect-atstart=no \
+              --toggle-collect="$symbol" \
+              --callgrind-out-file="$out" \
+              "$binary" actual "$workload" "$capacity" "$ROUNDS" \
+              >/dev/null 2>&1
+
+            ir=$(awk '/^summary:/ {print $2}' "$out")
+            printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+              "${{ matrix.compiler }}" "$build" "$workload" "$capacity" \
+              "$OPERATIONS" "$ir" "$checksum" >> "$RESULTS"
+          }
+
+          for capacity in 63 64
+          do
+            for workload in index pushpop segments mixed
+            do
+              measure baseline "$BASELINE" "$workload" "$capacity"
+              measure candidate "$CANDIDATE" "$workload" "$capacity"
+            done
+          done
+
+          cat "$RESULTS"
+
+          {
+            echo "### ${{ matrix.compiler }} — actual RingBuffer"
+            echo
+            echo '| Workload | Capacity | Develop Ir | Factored Ir | Delta | Delta % |'
+            echo '|---|---:|---:|---:|---:|---:|'
+            for capacity in 63 64
+            do
+              for workload in index pushpop segments mixed
+              do
+                direct=$(awk -F '\t' -v w="$workload" -v c="$capacity" '$2 == "baseline" && $3 == w && $4 == c {print $6}' "$RESULTS")
+                factored=$(awk -F '\t' -v w="$workload" -v c="$capacity" '$2 == "candidate" && $3 == w && $4 == c {print $6}' "$RESULTS")
+                awk -v w="$workload" -v c="$capacity" -v d="$direct" -v a="$factored" 'BEGIN {
+                  delta = a - d;
+                  pct = d == 0 ? 0 : delta * 100.0 / d;
+                  printf "| %s | %d | %d | %d | %+d | %+.6f%% |\n", w, c, d, a, delta, pct;
+                }'
+              done
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: m4-4-runtime-ring-${{ matrix.compiler }}
+          path: |
+            build/m4-4-runtime-ring/results.tsv
+            build/m4-4-runtime-ring/callgrind-*.out
+          if-no-files-found: error
