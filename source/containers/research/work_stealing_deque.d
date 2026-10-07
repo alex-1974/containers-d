@@ -116,6 +116,8 @@ if (isWorkStealingTransportElement!T)
         "Work-stealing deque capacity exceeds the qualified 63-bit counter-domain bound");
 
     @disable this(this);
+    @disable this(return scope typeof(this) rhs);
+    @disable ref typeof(this) opAssign(ref typeof(this) rhs);
 
     enum size_t capacity = Capacity;
     enum size_t mask = Capacity - 1;
@@ -587,6 +589,15 @@ version (unittest)
 
         ~this() @safe @nogc nothrow {}
     }
+
+    private struct PostblitValue
+    {
+        ulong value;
+
+        this(this) @safe @nogc nothrow
+        {
+        }
+    }
 }
 
 unittest
@@ -599,6 +610,7 @@ unittest
     static assert(!isWorkStealingTransportElement!(ulong*));
     static assert(!isWorkStealingTransportElement!Object);
     static assert(!isWorkStealingTransportElement!DestructorValue);
+    static assert(!isWorkStealingTransportElement!PostblitValue);
 
     static assert(!__traits(compiles,
         ResearchWorkStealingDeque!(ulong, 1)));
