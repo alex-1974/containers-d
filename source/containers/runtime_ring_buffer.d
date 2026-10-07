@@ -9,7 +9,9 @@ import containers.internal.element_lifetime :
     EndElementLifetimeOps,
     PlacementMoveOps;
 import containers.internal.ring_sequence : RingSequenceOps;
-import containers.internal.runtime_storage : RuntimeStorageOwner;
+import containers.internal.runtime_storage :
+    RuntimeStorageAccessOps,
+    RuntimeStorageOwner;
 import core.lifetime : emplace, forward;
 import std.traits : hasIndirections, isNested, Unqual;
 
@@ -35,6 +37,7 @@ private:
     mixin EndElementLifetimeOps!T;
 
     RuntimeStorageOwner!T _storage;
+    mixin RuntimeStorageAccessOps!T;
     mixin RingSequenceOps;
 
     ref T borrowedSlot(
@@ -44,33 +47,33 @@ private:
         // sees only a stored pointer value and cannot prove that its lifetime
         // ends with this RingBuffer. This helper is the narrow bridge from
         // internal pointer provenance to the public owner-borrow contract.
-        return *_storage.slotPointer(physicalIndex);
+        return *runtimeSlotPointer(physicalIndex);
     }
 
     ref const(T) borrowedSlot(
         size_t physicalIndex) const scope return @trusted
     {
-        return *_storage.slotPointer(physicalIndex);
+        return *runtimeSlotPointer(physicalIndex);
     }
 
     T[] borrowedSlice(
         size_t physicalStart,
         size_t count) scope return @trusted @nogc nothrow
     {
-        return _storage.slotSlice(physicalStart, count);
+        return runtimeSlotSlice(physicalStart, count);
     }
 
     const(T)[] borrowedSlice(
         size_t physicalStart,
         size_t count) const scope return @trusted @nogc nothrow
     {
-        return _storage.slotSlice(physicalStart, count);
+        return runtimeSlotSlice(physicalStart, count);
     }
 
     void endSlotLifetime(size_t physicalIndex)
     {
-        endElementLifetime(_storage.slotPointer(physicalIndex));
-        _storage.clearVacatedSlot(physicalIndex);
+        endElementLifetime(runtimeSlotPointer(physicalIndex));
+        runtimeClearVacatedSlot(physicalIndex);
     }
 
 public:
@@ -151,7 +154,7 @@ public:
     ref const(T) front() const scope return
     {
         assert(!empty);
-        return *_storage.slotPointer(_head);
+        return *runtimeSlotPointer(_head);
     }
 
     /**
@@ -169,7 +172,7 @@ public:
     ref const(T) back() const scope return
     {
         assert(!empty);
-        return *_storage.slotPointer(physicalIndex(_length - 1));
+        return *runtimeSlotPointer(physicalIndex(_length - 1));
     }
 
     /**
@@ -187,7 +190,7 @@ public:
     ref const(T) opIndex(size_t logicalIndex) const scope return
     {
         assert(logicalIndex < _length);
-        return *_storage.slotPointer(physicalIndex(logicalIndex));
+        return *runtimeSlotPointer(physicalIndex(logicalIndex));
     }
 
     /**
@@ -221,7 +224,7 @@ public:
             ? _length
             : physicalRemaining;
 
-        return _storage.slotSlice(_head, count);
+        return runtimeSlotSlice(_head, count);
     }
 
     /**
@@ -246,7 +249,7 @@ public:
             return null;
 
         const firstCount = firstSegment.length;
-        return _storage.slotSlice(0, _length - firstCount);
+        return runtimeSlotSlice(0, _length - firstCount);
     }
 
     /**
@@ -274,11 +277,11 @@ public:
             is(U == T) &&
             !__traits(isRef, value))
         {
-            placementMoveConstruct(_storage.slotPointer(physical), value);
+            placementMoveConstruct(runtimeSlotPointer(physical), value);
         }
         else
         {
-            emplace(_storage.slotPointer(physical), forward!value);
+            emplace(runtimeSlotPointer(physical), forward!value);
         }
 
         ++_length;
