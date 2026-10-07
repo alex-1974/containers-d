@@ -16,6 +16,13 @@ import core.atomic :
     atomicStore,
     cas;
 
+version (ContainersWorkStealingResearchProbe)
+{
+    private shared bool _researchPauseBatchAfterMark;
+    private shared bool _researchBatchMarked;
+    private shared ulong _researchOwnerBusyRetries;
+}
+
 /**
  * Result carrier for owner pop and thief steal.
  *
@@ -252,6 +259,14 @@ public:
                 atomicStore!(MemoryOrder.raw)(
                     _bottom,
                     oldBottom);
+
+                version (ContainersWorkStealingResearchProbe)
+                {
+                    atomicFetchAdd!(MemoryOrder.raw)(
+                        _researchOwnerBusyRetries,
+                        1UL);
+                }
+
                 continue;
             }
 
@@ -399,6 +414,22 @@ public:
             return 0;
         }
 
+        version (ContainersWorkStealingResearchProbe)
+        {
+            if (atomicLoad!(MemoryOrder.acq)(
+                    _researchPauseBatchAfterMark))
+            {
+                atomicStore!(MemoryOrder.rel)(
+                    _researchBatchMarked,
+                    true);
+
+                while (atomicLoad!(MemoryOrder.acq)(
+                        _researchPauseBatchAfterMark))
+                {
+                }
+            }
+        }
+
         workStealingSeqCstBarrier(
             &_fenceWord);
 
@@ -452,6 +483,45 @@ public:
                 false));
 
         return take;
+    }
+
+    version (ContainersWorkStealingResearchProbe)
+    {
+        void researchEnableBatchPause()
+            @safe @nogc nothrow
+        {
+            atomicStore!(MemoryOrder.raw)(
+                _researchBatchMarked,
+                false);
+            atomicStore!(MemoryOrder.raw)(
+                _researchOwnerBusyRetries,
+                0UL);
+            atomicStore!(MemoryOrder.rel)(
+                _researchPauseBatchAfterMark,
+                true);
+        }
+
+        void researchReleaseBatchPause()
+            @safe @nogc nothrow
+        {
+            atomicStore!(MemoryOrder.rel)(
+                _researchPauseBatchAfterMark,
+                false);
+        }
+
+        bool researchBatchMarkedSnapshot() const
+            @safe @nogc nothrow
+        {
+            return atomicLoad!(MemoryOrder.acq)(
+                _researchBatchMarked);
+        }
+
+        ulong researchOwnerBusyRetriesSnapshot() const
+            @safe @nogc nothrow
+        {
+            return atomicLoad!(MemoryOrder.acq)(
+                _researchOwnerBusyRetries);
+        }
     }
 
     version (unittest)
