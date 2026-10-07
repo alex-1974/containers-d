@@ -117,6 +117,19 @@ jobs:
             grep -E '\b(call|callq)\b' "$OUT/manual-push.asm" || true
           fi
 
+          if [[ -n "$candidate_target" && -n "$manual_target" ]]; then
+            sed -E 's/^[[:space:]]*[0-9a-f]+:[[:space:]]*//' "$OUT/candidate-push.asm" | \
+              sed -E '/^$/d; /file format/d; /Disassembly of section/d; /^.*>:$/d' \
+              > "$OUT/candidate-push.norm"
+
+            sed -E 's/^[[:space:]]*[0-9a-f]+:[[:space:]]*//' "$OUT/manual-push.asm" | \
+              sed -E '/^$/d; /file format/d; /Disassembly of section/d; /^.*>:$/d' \
+              > "$OUT/manual-push.norm"
+
+            echo '=== normalized push callee diff ==='
+            diff -u "$OUT/manual-push.norm" "$OUT/candidate-push.norm" || true
+          fi
+
       - name: Upload codegen evidence
         uses: actions/upload-artifact@v7
         with:
