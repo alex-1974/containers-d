@@ -1,0 +1,146 @@
+module containers.scratch_buffer_reuse_probe;
+
+import containers.scratch_buffer : ScratchBuffer;
+import std.conv : to;
+import std.stdio : stderr, writeln;
+
+enum size_t capacity = 64;
+alias Candidate = ScratchBuffer!int;
+
+private struct ManualScratch
+{
+    int[] storage;
+    size_t length;
+
+    this(size_t capacity)
+    {
+        storage = new int[](capacity);
+    }
+
+    bool tryPushBack(int value) @safe @nogc nothrow
+    {
+        if (length == storage.length)
+            return false;
+
+        storage[length++] = value;
+
+        return true;
+    }
+
+    int[] live() return scope @safe @nogc nothrow
+    {
+        return storage[0 .. length];
+    }
+
+    void reset() @safe @nogc nothrow
+    {
+        length = 0;
+    }
+}
+
+private ulong mix(ulong state, int value) @safe @nogc nothrow
+{
+    return
+        (state ^ cast(uint) value) *
+        0x100000001B3UL;
+}
+
+pragma(inline, false)
+extern(C) ulong bench_candidate(
+    ref Candidate scratch,
+    scope const(int)[] input,
+    size_t rounds)
+{
+    ulong checksum = 0xCBF29CE484222325UL;
+
+    foreach (round; 0 .. rounds)
+    {
+        scratch.reset();
+
+        foreach (i, seed; input)
+        {
+            const value =
+                seed ^ cast(int)(round + i);
+
+            assert(scratch.tryPushBack(value));
+        }
+
+        foreach (value; scratch[])
+            checksum = mix(checksum, value);
+    }
+
+    checksum ^= scratch.capacity << 32;
+    return checksum;
+}
+
+pragma(inline, false)
+extern(C) ulong bench_manual(
+    ref ManualScratch scratch,
+    scope const(int)[] input,
+    size_t rounds)
+{
+    ulong checksum = 0xCBF29CE484222325UL;
+
+    foreach (round; 0 .. rounds)
+    {
+        scratch.reset();
+
+        foreach (i, seed; input)
+        {
+            const value =
+                seed ^ cast(int)(round + i);
+
+            assert(scratch.tryPushBack(value));
+        }
+
+        foreach (value; scratch.live())
+            checksum = mix(checksum, value);
+    }
+
+    checksum ^= scratch.storage.length << 32;
+    return checksum;
+}
+
+void main(string[] args)
+{
+    if (args.length != 3)
+    {
+        stderr.writeln(
+            "usage: scratch-buffer-reuse-probe <candidate|manual> <rounds>");
+        return;
+    }
+
+    const rounds = to!size_t(args[2]);
+
+    int[capacity] input;
+    uint state =
+        cast(uint) rounds ^
+        0xA341_316Cu;
+
+    foreach (ref value; input)
+    {
+        state ^= state << 13;
+        state ^= state >> 17;
+        state ^= state << 5;
+        value = cast(int) state;
+    }
+
+    final switch (args[1])
+    {
+        case "candidate":
+        {
+            auto scratch = Candidate(capacity);
+            writeln("candidate ",
+                bench_candidate(scratch, input[], rounds));
+            break;
+        }
+
+        case "manual":
+        {
+            auto scratch = ManualScratch(capacity);
+            writeln("manual ",
+                bench_manual(scratch, input[], rounds));
+            break;
+        }
+    }
+}
