@@ -268,36 +268,52 @@ public:
      * insertion therefore does not depend on the unresolved rvalue behavior of
      * `core.lifetime.emplace` tracked in issue #8.
      */
-    pragma(inline, true)
-    bool tryPushBack(U)(auto ref U value)
-    if (is(Unqual!U == T) &&
-        __traits(compiles, emplace(cast(T*) null, forward!value)))
+    static if (__traits(isScalar, T))
     {
-        if (full)
-            return false;
-
-        const physical = physicalIndex(_length);
-
-        static if (__traits(isScalar, T))
+        pragma(inline, true)
+        bool tryPushBack(T value)
         {
-            // Scalar T has no elaborate construction semantics. Store directly
-            // into the qualified runtime slot so DMD does not route the common
-            // numeric/handle path through generic core.lifetime.emplace.
+            if (full)
+                return false;
+
+            const physical = physicalIndex(_length);
+
+            // Scalar T has no elaborate construction semantics. Match the
+            // qualified StaticVector scalar strategy: use a plain typed store
+            // instead of routing the common numeric/handle path through
+            // generic core.lifetime.emplace / auto-ref transfer machinery.
             *runtimeSlotPointer(physical) = value;
-        }
-        else static if (__traits(hasMoveConstructor, T) &&
-            is(U == T) &&
-            !__traits(isRef, value))
-        {
-            placementMoveConstruct(runtimeSlotPointer(physical), value);
-        }
-        else
-        {
-            emplace(runtimeSlotPointer(physical), forward!value);
-        }
 
-        ++_length;
-        return true;
+            ++_length;
+            return true;
+        }
+    }
+    else
+    {
+        pragma(inline, true)
+        bool tryPushBack(U)(auto ref U value)
+        if (is(Unqual!U == T) &&
+            __traits(compiles, emplace(cast(T*) null, forward!value)))
+        {
+            if (full)
+                return false;
+
+            const physical = physicalIndex(_length);
+
+            static if (__traits(hasMoveConstructor, T) &&
+                is(U == T) &&
+                !__traits(isRef, value))
+            {
+                placementMoveConstruct(runtimeSlotPointer(physical), value);
+            }
+            else
+            {
+                emplace(runtimeSlotPointer(physical), forward!value);
+            }
+
+            ++_length;
+            return true;
+        }
     }
 
     /**
