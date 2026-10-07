@@ -78,6 +78,10 @@ jobs:
         shell: bash
         run: dub run --root=tests/gc-reachability --compiler="$DC" --force
 
+      - name: Static ring over-alignment GC reachability
+        shell: bash
+        run: dub run --root=tests/static-ring-overalignment-gc --compiler="$DC" --force
+
       - name: DIP1000 borrowed-slice negative compile
         shell: bash
         run: |
