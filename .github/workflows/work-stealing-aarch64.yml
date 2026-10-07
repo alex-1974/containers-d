@@ -1,0 +1,56 @@
+name: Work-Stealing Native AArch64
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - source/containers/research/work_stealing_deque.d
+      - tests/work-stealing-correctness/**
+      - .github/workflows/work-stealing-aarch64.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-arm64:
+    name: Native AArch64 correctness / LDC 1.41
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install LDC
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ldc-1.41.0
+
+      - name: Native platform evidence
+        shell: bash
+        run: |
+          "$DC" --version
+          dub --version
+          uname -a
+          uname -m
+          lscpu
+
+          test "$(uname -m)" = "aarch64"
+
+      - name: Concurrent correctness
+        shell: bash
+        run: |
+          dub run \
+            --root=tests/work-stealing-correctness \
+            --compiler="$DC" \
+            --force
+
+      - name: Concurrent correctness with DIP1000
+        shell: bash
+        run: |
+          DFLAGS="-preview=dip1000" \
+            dub run \
+              --root=tests/work-stealing-correctness \
+              --compiler="$DC" \
+              --force
