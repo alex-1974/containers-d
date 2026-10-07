@@ -52,6 +52,7 @@ private ulong mix(ulong state, int value) @safe @nogc nothrow
 pragma(inline, false)
 extern(C) ulong bench_candidate(
     ref Candidate scratch,
+    scope const(int)[] input,
     size_t rounds)
 {
     ulong checksum = 0xCBF29CE484222325UL;
@@ -60,11 +61,10 @@ extern(C) ulong bench_candidate(
     {
         scratch.reset();
 
-        foreach (i; 0 .. capacity)
+        foreach (i, seed; input)
         {
             const value =
-                cast(int) (
-                    round * capacity + i);
+                seed ^ cast(int)(round + i);
 
             assert(scratch.tryPushBack(value));
         }
@@ -81,6 +81,7 @@ extern(C) ulong bench_candidate(
 pragma(inline, false)
 extern(C) ulong bench_manual(
     ref ManualScratch scratch,
+    scope const(int)[] input,
     size_t rounds)
 {
     ulong checksum = 0xCBF29CE484222325UL;
@@ -89,11 +90,10 @@ extern(C) ulong bench_manual(
     {
         scratch.reset();
 
-        foreach (i; 0 .. capacity)
+        foreach (i, seed; input)
         {
             const value =
-                cast(int) (
-                    round * capacity + i);
+                seed ^ cast(int)(round + i);
 
             assert(scratch.tryPushBack(value));
         }
@@ -118,19 +118,34 @@ void main(string[] args)
 
     const rounds = to!size_t(args[2]);
 
+    int[capacity] input;
+    uint state =
+        cast(uint) rounds ^
+        0xA341_316Cu;
+
+    foreach (ref value; input)
+    {
+        state ^= state << 13;
+        state ^= state >> 17;
+        state ^= state << 5;
+        value = cast(int) state;
+    }
+
     final switch (args[1])
     {
         case "candidate":
         {
             auto scratch = Candidate(capacity);
-            writeln("candidate ", bench_candidate(scratch, rounds));
+            writeln("candidate ",
+                bench_candidate(scratch, input[], rounds));
             break;
         }
 
         case "manual":
         {
             auto scratch = ManualScratch(capacity);
-            writeln("manual ", bench_manual(scratch, rounds));
+            writeln("manual ",
+                bench_manual(scratch, input[], rounds));
             break;
         }
     }
