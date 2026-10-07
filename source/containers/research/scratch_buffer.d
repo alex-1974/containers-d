@@ -9,7 +9,9 @@ module containers.research.scratch_buffer;
 
 import containers.internal.element_lifetime :
     EndElementLifetimeOps,
-    PlacementMoveOps;
+    PlacementMoveOps,
+    elementHasIndirections,
+    elementNeedsDestruction;
 import containers.internal.runtime_storage : RuntimeStorageOwner;
 import core.lifetime : emplace, forward;
 import std.traits : hasIndirections, isNested, Unqual;
@@ -194,10 +196,20 @@ public:
      */
     void reset()
     {
-        while (_length != 0)
+        static if (!elementNeedsDestruction!T &&
+            !elementHasIndirections!T)
         {
-            --_length;
-            endSlotLifetime(_length);
+            // No T lifetime work and no stale GC-visible representation need
+            // cleanup. Reuse is therefore an O(1) logical reset.
+            _length = 0;
+        }
+        else
+        {
+            while (_length != 0)
+            {
+                --_length;
+                endSlotLifetime(_length);
+            }
         }
     }
 }
