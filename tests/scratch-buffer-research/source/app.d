@@ -49,15 +49,14 @@ private void exerciseReserve()
     assert(scratch.tryReserve(4));
     assert(scratch.capacity == 4);
 
-    auto emptyBefore = scratch[];
-    const beforePtr = emptyBefore.ptr;
+    assert(scratch.tryPushBack(11));
+    const beforePtr = &scratch[0];
 
-    // Already-sufficient capacity is a no-op.
+    // Already-sufficient capacity is a no-op, even with live contents.
     assert(scratch.tryReserve(2));
     assert(scratch.capacity == 4);
-    assert(scratch[].ptr is beforePtr);
+    assert(&scratch[0] is beforePtr);
 
-    assert(scratch.tryPushBack(11));
     assert(scratch.tryPushBack(12));
 
     // Required growth while live is rejected without mutation.
