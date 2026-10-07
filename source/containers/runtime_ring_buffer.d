@@ -279,7 +279,7 @@ public:
     static if (__traits(isScalar, T))
     {
         pragma(inline, true)
-        bool tryPushBack(T value)
+        bool tryPushBack()(T value)
         {
             if (full)
                 return false;
