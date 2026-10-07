@@ -70,9 +70,22 @@ jobs:
         shell: bash
         run: dub run --root=tests/consumer --compiler="$DC" --force
 
+      - name: WorkStealingDeque native concurrent correctness
+        if: matrix.name == 'Linux ARM64 / LDC latest'
+        shell: bash
+        run: dub run --root=tests/work-stealing-correctness --compiler="$DC" --force
+
       - name: External consumer smoke with DIP1000
         shell: bash
         run: DFLAGS="-preview=dip1000" dub run --root=tests/consumer --compiler="$DC" --force
+
+      - name: WorkStealingDeque concurrent correctness
+        shell: bash
+        run: dub run --root=tests/work-stealing-correctness --compiler="$DC" --force
+
+      - name: WorkStealingDeque concurrent correctness with DIP1000
+        shell: bash
+        run: DFLAGS="-preview=dip1000" dub run --root=tests/work-stealing-correctness --compiler="$DC" --force
 
       - name: StaticVector lifecycle qualification
         shell: bash
@@ -124,6 +137,27 @@ jobs:
                 --compiler="$DC" \
                 --force; then
               echo "Expected invalid StaticVector transfer to fail: $root"
+              false
+            fi
+          done
+
+      - name: WorkStealingDeque negative compile contract
+        shell: bash
+        run: |
+          for root in \
+            tests/compile-negative/work-stealing-copy \
+            tests/compile-negative/work-stealing-assign \
+            tests/compile-negative/work-stealing-pass-by-value \
+            tests/compile-negative/work-stealing-move \
+            tests/compile-negative/work-stealing-unsupported-element \
+            tests/compile-negative/work-stealing-postblit-element \
+            tests/compile-negative/work-stealing-unshared-pointer
+          do
+            if dub build \
+                --root="$root" \
+                --compiler="$DC" \
+                --force; then
+              echo "Expected invalid WorkStealingDeque form to fail: $root"
               false
             fi
           done
@@ -206,13 +240,19 @@ jobs:
           EOF
 
           cat > build/archive-consumer/source/app.d <<'EOF'
-          import containers : RingBuffer, StaticRingBuffer, StaticVector;
+          import containers : RingBuffer, StaticRingBuffer, StaticVector, WorkStealingDeque;
 
           void main() @safe @nogc nothrow
           {
               StaticVector!(int, 2) vector;
               vector.pushBack(7);
               assert(vector[] == [7]);
+
+              WorkStealingDeque!(ulong, 4) work;
+              assert(work.tryPush(9));
+              auto stolen = work.steal();
+              assert(stolen.found);
+              assert(stolen.value == 9);
 
               StaticRingBuffer!(int, 2) fixed;
               assert(fixed.tryPushBack(1));
