@@ -188,7 +188,7 @@ Decision record: `docs/design/public-customization-decision.md`.
 M4 exits with concrete production families and qualified internal composition,
 not a universal framework.
 
-## M5 — Work-stealing deque family — production promotion current
+## M5 — Work-stealing deque family — complete
 
 Tracking: issues #38 and #39. Research evidence: PR #54. Promotion: PR #55.
 
@@ -214,16 +214,66 @@ Qualified research result:
   regression.
 
 Production promotion exposes only the scheduler-independent container family.
+PR #55 merged the qualified family to develop as
+`030065bcc7030a1cae0d8ba7502f95a46e8546ce`.
+
 concurrency-d remains an external read-only reference/consumer in this
 repository; downstream adoption is a separate concurrency-d project decision.
 
 No public size/empty/full snapshot is admitted in the first API.
 
+## M6 — Reusable contiguous scratch storage — current
+
+Tracking: issue #27.
+
+M6 starts with a deliberately narrow question: whether a generic
+`ScratchBuffer!T` is justified by repeated real-consumer requirements.
+
+Initial semantic target:
+
+- one owned contiguous typed allocation;
+- capacity retained across reset/reuse cycles;
+- explicit logical/initialized prefix;
+- borrowed slice access to the live prefix;
+- controlled capacity establishment/growth outside the steady-state hot path;
+- reset without backing reallocation;
+- `@nogc` steady-state operations once sufficient capacity exists;
+- thread-confined ownership in the first family;
+- explicit high-water/capacity accounting where it serves the contract.
+
+M6 explicitly does **not** assume that these other concepts are the same type:
+
+- `UniqueBuffer` / generic move-only ownership foundation (#26);
+- heterogeneous linear Arena;
+- cross-thread BufferPool;
+- object pools;
+- persistent result ownership;
+- consumer-specific retained-resource provenance.
+
+Research order:
+
+1. derive the minimal ScratchBuffer contract and invalidation/reset semantics;
+2. compare direct storage ownership against a possible private/narrow
+   UniqueBuffer foundation;
+3. qualify DMD/LDC correctness, allocation behavior, alignment, GC visibility
+   and steady-state codegen;
+4. model representative containers-d-side workloads corresponding to DCanvas,
+   geometry caller-workspace orchestration and osm/raster-style reusable
+   buffers;
+5. decide whether ScratchBuffer deserves production promotion;
+6. only then decide whether Arena, BufferPool or UniqueBuffer need separate
+   milestones.
+
+Consumer repositories are evidence sources only in this milestone; no
+cross-repository migration is performed.
+
 ## Later candidates
 
-- UniqueBuffer / owned contiguous storage where consumer evidence supports it;
-- ScratchBuffer / Arena / BufferPool families;
-- synchronized bounded queues;
+- UniqueBuffer / owned contiguous storage if M6 proves a reusable common
+  ownership foundation;
+- Arena / BufferPool as separate families where consumer evidence justifies
+  them;
+- synchronized bounded queues (#28);
 - other explicitly concurrent SPSC/MPSC/MPMC families.
 
 Later milestones are admitted only when their contracts, consumers, safety and
