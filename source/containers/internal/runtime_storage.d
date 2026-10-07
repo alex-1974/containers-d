@@ -310,21 +310,6 @@ public:
             cast(T*) (_bytes.ptr + physicalIndex * T.sizeof))();
     }
 
-    /**
-     * Consumer-instantiated variant used by M6 research to test whether DMD
-     * module-boundary inlining is the remaining ScratchBuffer hot-path cost.
-     *
-     * This is package-internal research evidence, not a public API.
-     */
-    package(containers) T* slotPointerInline()(
-        size_t physicalIndex) return scope @safe @nogc nothrow
-    {
-        assert(physicalIndex < _capacity);
-
-        return (() @trusted =>
-            cast(T*) (_bytes.ptr + physicalIndex * T.sizeof))();
-    }
-
     package(containers) const(T)* slotPointer(
         size_t physicalIndex) const return scope @safe @nogc nothrow
     {
