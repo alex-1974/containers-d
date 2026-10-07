@@ -103,16 +103,19 @@ After successful construction:
 Synchronization/runtime internals are measured separately from container
 backing-storage allocation.
 
-## Destruction/lifetime rule — Stage 1
+## Object lifetime — Stage 1
 
-The queue object must outlive every thread that may call queue operations.
+The queue is a reference type (`final class`), matching its synchronized
+identity semantics.
 
-Research tests join all worker/waiter threads before releasing the last queue
+Each worker that may access the queue must retain a normal class reference for
+the duration of that access. Research explicitly qualifies that worker-held
+references keep the queue alive after the initiating thread drops its own
 reference.
 
-Destruction with externally active operations is outside the admitted Stage-1
-contract. M7 must decide whether a stronger production rule is required before
-promotion.
+No special destructor-driven waiter cancellation is promised. Explicit/manual
+destruction while operations are active is outside the contract; ordinary D GC
+reachability supplies lifetime instead of a bespoke synchronization protocol.
 
 ## Deterministic Stage-1 gates
 
