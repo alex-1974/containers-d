@@ -1,0 +1,122 @@
+name: Work-Stealing Contention Parity
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - source/containers/research/work_stealing_deque.d
+      - benchmarks/work_stealing_contention_parity_probe.d
+      - .github/workflows/perf-work-stealing-contention-parity.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  paired-throughput:
+    name: Contention parity / ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - dmd-2.111.0
+          - ldc-1.41.0
+
+    steps:
+      - name: Check out containers-d
+        uses: actions/checkout@v7
+        with:
+          path: containers-d
+
+      - name: Check out pinned concurrency-d R0.1
+        uses: actions/checkout@v7
+        with:
+          repository: alex-1974/concurrency-d
+          ref: b35a92f3412da6ca8a666cca9c144b5a335e5988
+          path: concurrency-d
+
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ${{ matrix.compiler }}
+
+      - name: Host evidence
+        shell: bash
+        run: |
+          "$DC" --version
+          uname -a
+          lscpu
+
+      - name: Build paired contention probe
+        shell: bash
+        run: |
+          cd containers-d
+          mkdir -p build/work-stealing-contention
+
+          REF=../concurrency-d/research/r0_1_work_stealing_deque/candidate/source
+
+          case "${{ matrix.compiler }}" in
+            dmd-*)
+              "$DC" \
+                -O \
+                -release \
+                -inline \
+                -boundscheck=off \
+                -Isource \
+                -I"$REF" \
+                -of=build/work-stealing-contention/probe \
+                benchmarks/work_stealing_contention_parity_probe.d \
+                source/containers/research/work_stealing_deque.d \
+                source/containers/internal/element_lifetime.d \
+                "$REF/concurrency/research/modular_bounded_wsq_batch_marked_top.d" \
+                "$REF/concurrency/research/bounded_wsq.d"
+              ;;
+            ldc-*)
+              "$DC" \
+                -O3 \
+                -release \
+                -boundscheck=off \
+                -Isource \
+                -I"$REF" \
+                -of=build/work-stealing-contention/probe \
+                benchmarks/work_stealing_contention_parity_probe.d \
+                source/containers/research/work_stealing_deque.d \
+                source/containers/internal/element_lifetime.d \
+                "$REF/concurrency/research/modular_bounded_wsq_batch_marked_top.d" \
+                "$REF/concurrency/research/bounded_wsq.d"
+              ;;
+          esac
+
+      - name: Run paired workloads
+        shell: bash
+        run: |
+          cd containers-d
+
+          BIN=build/work-stealing-contention/probe
+          RESULTS=build/work-stealing-contention/results.txt
+
+          : > "$RESULTS"
+
+          "$BIN" 1 0 262144 2 7 | tee -a "$RESULTS"
+          "$BIN" 1 1 262144 2 7 | tee -a "$RESULTS"
+          "$BIN" 4 0 262144 2 7 | tee -a "$RESULTS"
+          "$BIN" 4 1 262144 2 7 | tee -a "$RESULTS"
+
+          {
+            echo "### ${{ matrix.compiler }} — paired P08e contention parity"
+            echo
+            cat "$RESULTS"
+            echo
+            echo "Ratios compare containers-d candidate / pinned P08e on the same runner."
+            echo "These are research measurements, not a cross-machine absolute-performance claim."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: work-stealing-contention-parity-${{ matrix.compiler }}
+          path: containers-d/build/work-stealing-contention/results.txt
+          if-no-files-found: error
