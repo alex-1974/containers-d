@@ -8,6 +8,7 @@ on:
       - source/containers/package.d
       - source/containers/work_stealing_deque.d
       - source/containers/internal/element_lifetime.d
+      - docs/design/work-stealing-deque-api.md
       - tests/consumer/**
       - tests/work-stealing-correctness/**
       - tests/compile-negative/work-stealing-*/**
