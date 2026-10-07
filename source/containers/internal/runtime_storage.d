@@ -501,6 +501,32 @@ unittest
 
 unittest
 {
+    // replaceEmptyCapacity performs exactly one release and one new
+    // acquisition; the consuming container is responsible for ensuring that
+    // no live T objects remain before replacement.
+    alias Owner = RuntimeStorageOwner!(int, CountingStorageBackend);
+
+    CountingStorageBackend.reset();
+
+    {
+        auto owner = Owner(4);
+
+        assert(CountingStorageBackend.acquisitions == 1);
+        assert(CountingStorageBackend.releases == 0);
+
+        owner.replaceEmptyCapacity(9);
+
+        assert(owner.capacity == 9);
+        assert(CountingStorageBackend.acquisitions == 2);
+        assert(CountingStorageBackend.releases == 1);
+    }
+
+    assert(CountingStorageBackend.acquisitions == 2);
+    assert(CountingStorageBackend.releases == 2);
+}
+
+unittest
+{
     // Byte-size overflow is detected before any allocation attempt.
     size_t bytes;
 
