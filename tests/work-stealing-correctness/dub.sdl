@@ -1,5 +1,6 @@
 name "containers-d-work-stealing-correctness"
 description "Concurrent correctness qualification for the work-stealing deque research family"
 targetType "executable"
+versions "ContainersWorkStealingResearchProbe"
 
 dependency "containers-d" path="../../"
