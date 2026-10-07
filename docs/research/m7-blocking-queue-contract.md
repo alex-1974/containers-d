@@ -141,6 +141,50 @@ coded bounded ring under the same synchronization shape.
 
 This asks whether containers-d composition itself costs material instructions.
 
+### Qualified storage result
+
+The storage-composition investigation initially reported a DMD 2.111 gap above
+100%. That result was not a valid abstraction comparison:
+
+- the manual ring used `(head + length) % capacity`;
+- RingBuffer intentionally uses the previously qualified overflow-safe
+  tail-room formulation;
+- trivial runtime-ring clear still performed per-element pop work;
+- imported/runtime owner access boundaries exposed additional DMD codegen cost.
+
+M7 corrected the comparison and the implementation in evidence-driven steps:
+
+1. retain the existing tail-room ring sequencing contract;
+2. localize runtime storage access through the already-qualified typed mixin;
+3. use a direct scalar push overload rather than generic `emplace`;
+4. inline runtime status accessors and read package-internal owner capacity
+   locally;
+5. make `clear()` O(1) for trivial pointer-free T while preserving explicit
+   lifetime/GC sanitation for other T;
+6. compare the candidate with a manual ring using the **same tail-room
+   sequencing algorithm**;
+7. verify combined, push-only and pop-only checksums independently before
+   measuring retired instructions.
+
+Qualified x86_64 results for the fair comparison:
+
+| Compiler | Combined | Push-only | Pop-only |
+| --- | ---: | ---: | ---: |
+| DMD 2.111 | +1.87% Ir | +2.55% Ir | -0.16% Ir |
+| LDC 1.41 | -3.27% Ir | +0.07% Ir | -3.24% Ir |
+
+Positive numbers mean RingBuffer-based candidate overhead versus the equivalent
+manual tail-room ring; negative numbers mean the candidate executed fewer
+retired instructions.
+
+This places RingBuffer storage composition in the same performance class as the
+manual implementation. M7 therefore does not justify a queue-specific storage
+implementation or duplicating ring algorithms inside BlockingQueue.
+
+The existing RingSequenceOps factoring probe independently shows exact
+instruction parity between direct and factored tail-room sequencing on DMD and
+LDC.
+
 ### Synchronization/contention
 
 Measure separately:
