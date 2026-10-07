@@ -99,8 +99,8 @@ jobs:
           diff -u "$OUT/bench_manual.norm" "$OUT/bench_candidate.norm" || true
 
           echo '=== candidate/manual push callees ==='
-          candidate_target=$(grep -E '\b(call|callq)\b' "$OUT/bench_candidate.asm" | head -1 | sed -E 's/.*<([^>]+)>.*/\1/' || true)
-          manual_target=$(grep -E '\b(call|callq)\b' "$OUT/bench_manual.asm" | head -1 | sed -E 's/.*<([^>]+)>.*/\1/' || true)
+          candidate_target=$(grep -E '\\b(call|callq)\\b' "$OUT/bench_candidate.asm" | head -1 | sed -E 's/.*<([^>]+)>.*/\1/' || true)
+          manual_target=$(grep -E '\\b(call|callq)\\b' "$OUT/bench_manual.asm" | head -1 | sed -E 's/.*<([^>]+)>.*/\1/' || true)
 
           echo "candidate target=$candidate_target"
           echo "manual target=$manual_target"
