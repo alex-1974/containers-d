@@ -56,6 +56,7 @@ private:
     RingBuffer!T _buffer = void;
     bool _closed;
     size_t _waitingConsumers;
+    size_t _researchWakeReturns;
 
 public:
     this(size_t capacity)
@@ -141,6 +142,9 @@ public:
                 ++_waitingConsumers;
                 scope(exit) --_waitingConsumers;
                 _notEmpty.wait();
+
+                version (ContainersBlockingQueueResearchProbe)
+                    ++_researchWakeReturns;
             }
 
             if (_buffer.empty)
@@ -182,6 +186,13 @@ public:
         {
             synchronized (_mutex)
                 return _waitingConsumers;
+        }
+
+        /// Number of returns from Condition.wait, including synthetic wakes.
+        size_t researchWakeReturns()
+        {
+            synchronized (_mutex)
+                return _researchWakeReturns;
         }
 
         /// Sends a notification without changing queue state.
