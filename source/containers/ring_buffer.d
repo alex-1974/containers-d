@@ -261,49 +261,57 @@ private:
     size_t _head;
     size_t _length;
 
-    size_t slotBaseOffset() const nothrow @safe @nogc
+    T* slotPointer(size_t physicalIndex) scope return nothrow @safe @nogc
     {
+        assert(physicalIndex < Capacity);
+
         static if (!Storage.usesDynamicAlignment)
         {
-            return 0;
+            // Preserve the released v0.1 direct-base expression exactly for
+            // element alignments the compiler/target can embed correctly.
+            return (() @trusted =>
+                cast(T*) (_storage.bytes.ptr + physicalIndex * T.sizeof))();
         }
         else
         {
             const address = (() @trusted =>
                 cast(size_t) _storage.bytes.ptr)();
-
             const mask = T.alignof - 1;
             const misalignment = address & mask;
-            return (T.alignof - misalignment) & mask;
+            const baseOffset = (T.alignof - misalignment) & mask;
+            const begin = baseOffset + physicalIndex * T.sizeof;
+
+            assert(begin <= _storage.bytes.length - T.sizeof);
+
+            return (() @trusted =>
+                cast(T*) (_storage.bytes.ptr + begin))();
         }
-    }
-
-    T* slotPointer(size_t physicalIndex) scope return nothrow @safe @nogc
-    {
-        assert(physicalIndex < Capacity);
-
-        const begin =
-            slotBaseOffset() + physicalIndex * T.sizeof;
-
-        assert(begin <= _storage.bytes.length - T.sizeof);
-
-        // The selected base plus a T-sized stride is aligned for T. Keep only
-        // the raw-byte-to-T pointer conversion inside the trusted boundary.
-        return (() @trusted =>
-            cast(T*) (_storage.bytes.ptr + begin))();
     }
 
     const(T)* slotPointer(size_t physicalIndex) const scope return nothrow @safe @nogc
     {
         assert(physicalIndex < Capacity);
 
-        const begin =
-            slotBaseOffset() + physicalIndex * T.sizeof;
+        static if (!Storage.usesDynamicAlignment)
+        {
+            return (() @trusted =>
+                cast(const(T)*) (
+                    _storage.bytes.ptr + physicalIndex * T.sizeof))();
+        }
+        else
+        {
+            const address = (() @trusted =>
+                cast(size_t) _storage.bytes.ptr)();
+            const mask = T.alignof - 1;
+            const misalignment = address & mask;
+            const baseOffset = (T.alignof - misalignment) & mask;
+            const begin = baseOffset + physicalIndex * T.sizeof;
 
-        assert(begin <= _storage.bytes.length - T.sizeof);
+            assert(begin <= _storage.bytes.length - T.sizeof);
 
-        return (() @trusted =>
-            cast(const(T)*) (_storage.bytes.ptr + begin))();
+            return (() @trusted =>
+                cast(const(T)*) (_storage.bytes.ptr + begin))();
+        }
     }
 
     T[] slotSlice(
@@ -414,9 +422,21 @@ private:
     {
         static if (hasIndirections!T)
         {
-            const begin =
-                slotBaseOffset() + physicalIndex * T.sizeof;
-            _storage.bytes[begin .. begin + T.sizeof] = 0;
+            static if (!Storage.usesDynamicAlignment)
+            {
+                const begin = physicalIndex * T.sizeof;
+                _storage.bytes[begin .. begin + T.sizeof] = 0;
+            }
+            else
+            {
+                const address = (() @trusted =>
+                    cast(size_t) _storage.bytes.ptr)();
+                const mask = T.alignof - 1;
+                const misalignment = address & mask;
+                const baseOffset = (T.alignof - misalignment) & mask;
+                const begin = baseOffset + physicalIndex * T.sizeof;
+                _storage.bytes[begin .. begin + T.sizeof] = 0;
+            }
         }
     }
 
