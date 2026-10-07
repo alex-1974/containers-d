@@ -66,7 +66,9 @@ jobs:
             tests/compile-negative/work-stealing-copy \
             tests/compile-negative/work-stealing-assign \
             tests/compile-negative/work-stealing-pass-by-value \
+            tests/compile-negative/work-stealing-move \
             tests/compile-negative/work-stealing-unsupported-element \
+            tests/compile-negative/work-stealing-postblit-element \
             tests/compile-negative/work-stealing-unshared-pointer
           do
             if dub build \
