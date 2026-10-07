@@ -138,13 +138,13 @@ public:
      * invalidates previous borrows.
      */
     pragma(inline, true)
-    T[] opSlice() scope return @trusted @nogc nothrow
+    T[] opSlice()() scope return @trusted @nogc nothrow
     {
         return _storage.slotSlice(0, _length);
     }
 
     pragma(inline, true)
-    const(T)[] opSlice() const scope return @trusted @nogc nothrow
+    const(T)[] opSlice()() const scope return @trusted @nogc nothrow
     {
         return _storage.slotSlice(0, _length);
     }
@@ -188,7 +188,7 @@ public:
      * No backing allocation or deallocation occurs.
      */
     pragma(inline, true)
-    void reset()
+    void reset()()
     {
         static if (!elementNeedsDestruction!T &&
             !elementHasIndirections!T)
