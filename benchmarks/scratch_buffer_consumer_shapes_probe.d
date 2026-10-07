@@ -127,7 +127,7 @@ extern(C) ulong bench_candidate_dcanvas(
                 12 + cast(int)(i & 3))));
         }
 
-        checksum ^= processGui(scratch[]);
+        checksum = mix(checksum, processGui(scratch[]));
     }
 
     return checksum ^ scratch.highWater;
@@ -156,7 +156,7 @@ extern(C) ulong bench_manual_dcanvas(
                 12 + cast(int)(i & 3))));
         }
 
-        checksum ^= processGui(scratch.live());
+        checksum = mix(checksum, processGui(scratch.live()));
     }
 
     return checksum ^ scratch.length;
@@ -186,7 +186,7 @@ extern(C) ulong bench_candidate_geometry(
                 cast(double)(b + cast(int)i) * 0.25)));
         }
 
-        checksum ^= processGeometry(scratch[]);
+        checksum = mix(checksum, processGeometry(scratch[]));
     }
 
     return checksum ^ scratch.highWater;
@@ -214,7 +214,7 @@ extern(C) ulong bench_manual_geometry(
                 cast(double)(b + cast(int)i) * 0.25)));
         }
 
-        checksum ^= processGeometry(scratch.live());
+        checksum = mix(checksum, processGeometry(scratch.live()));
     }
 
     return checksum ^ scratch.length;
@@ -248,7 +248,7 @@ extern(C) ulong bench_candidate_osm_raster(
             assert(scratch.tryPushBack(value));
         }
 
-        checksum ^= processBytes(scratch[]);
+        checksum = mix(checksum, processBytes(scratch[]));
     }
 
     return checksum ^ scratch.highWater;
@@ -284,7 +284,7 @@ extern(C) ulong bench_manual_osm_raster(
         if (scratch.length > highWater)
             highWater = scratch.length;
 
-        checksum ^= processBytes(scratch.live());
+        checksum = mix(checksum, processBytes(scratch.live()));
     }
 
     return checksum ^ highWater;
