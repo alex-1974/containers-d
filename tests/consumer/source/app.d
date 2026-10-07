@@ -37,6 +37,28 @@ private void exerciseSafeCore() @safe @nogc nothrow
     ulong[2] batchOutput;
     assert(work.stealBatch(batchOutput[]) == 0);
 
+    ScratchBuffer!ubyte bytes;
+    assert(bytes.tryReserve(4096));
+
+    ubyte[4096] reference;
+    foreach (round; 0 .. 128)
+    {
+        bytes.reset();
+
+        const live = 2048 + ((round * 37 + 11) & 1023);
+        foreach (i; 0 .. live)
+        {
+            const value =
+                cast(ubyte)((round * 29 + i * 17) ^ (i >> 3));
+
+            reference[i] = value;
+            assert(bytes.tryPushBack(value));
+        }
+
+        assert(bytes.length == live);
+        assert(bytes[] == reference[0 .. live]);
+    }
+
     ScratchBuffer!int scratch;
     assert(scratch.tryReserve(8));
     assert(scratch.capacity == 8);
