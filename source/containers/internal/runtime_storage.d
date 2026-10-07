@@ -42,7 +42,15 @@ private void removeGcRange(scope ubyte[] bytes) @trusted @nogc nothrow
     GC.removeRange(bytes.ptr);
 }
 
-private ubyte* storagePointer(scope ubyte[] block)
+/**
+ * Extracts the address of a backend-owned allocation for unique-owner storage.
+ *
+ * The slice originates only from Backend.acquire. Its payload is heap/external
+ * storage and does not borrow from the slice descriptor itself. The owner
+ * deliberately stores that address beyond this helper call; therefore the
+ * parameter must not be DIP1000 scope.
+ */
+private ubyte* storagePointer(ubyte[] block)
     @trusted @nogc nothrow
 {
     return block.ptr;
