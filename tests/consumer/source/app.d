@@ -1,6 +1,6 @@
 module app;
 
-import containers : RingBuffer, StaticRingBuffer, StaticVector;
+import containers : RingBuffer, StaticRingBuffer, StaticVector, WorkStealingDeque, WorkStealingTakeResult;
 
 struct SafeMovable
 {
@@ -20,6 +20,23 @@ struct SafeMovable
 
 private void exerciseSafeCore() @safe @nogc nothrow
 {
+    WorkStealingDeque!(ulong, 8) work;
+    static assert(work.capacity == 8);
+
+    assert(work.tryPush(11));
+    assert(work.tryPush(22));
+
+    WorkStealingTakeResult!ulong stolen = work.steal();
+    assert(stolen.found);
+    assert(stolen.value == 11);
+
+    auto owner = work.pop();
+    assert(owner.found);
+    assert(owner.value == 22);
+
+    ulong[2] batchOutput;
+    assert(work.stealBatch(batchOutput[]) == 0);
+
     StaticVector!(int, 4) vector;
     vector.pushBack(1);
     vector.pushBack(2);
