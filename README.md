@@ -25,7 +25,10 @@ import containers : RingBuffer, StaticRingBuffer;
 The current unreleased development branch additionally exports:
 
 ```d
-import containers : StaticVector;
+import containers :
+    StaticVector,
+    WorkStealingDeque,
+    WorkStealingTakeResult;
 ```
 
 ## Compatibility
@@ -40,10 +43,10 @@ Normal development is continuously checked with DMD 2.111 and LDC 1.41. The
 v0.1 release gate additionally qualifies DMD 2.112/2.113 and LDC 1.42/1.43 and
 runs portability jobs on Linux, Windows and macOS.
 
-The public containers are single-threaded. Nested/local struct element types
-carrying an outer context remain excluded where their hidden context/lifetime
-contract is not qualified; issue #10 owns that research. Concurrent container
-families are designed separately rather than enabled through a policy switch.
+Sequential container families remain unsynchronized. Concurrent semantics are
+represented by separate public types rather than policy switches. Nested/local
+struct element types carrying an outer context remain excluded where their
+hidden context/lifetime contract is not qualified; issue #10 owns that research.
 
 ## Static vector
 
@@ -75,6 +78,51 @@ Scalar element types use an automatically selected direct inline
 representation. Non-trivial types use the qualified lifetime/storage machinery
 for construction, destruction, GC visibility and alignment. Those choices are
 implementation details, not public policy parameters.
+
+## Work-stealing deque
+
+The unreleased development branch adds
+`WorkStealingDeque!(T, Capacity)`, a bounded fixed-capacity concurrent deque
+for exactly one owner and zero or more thief threads.
+
+```d
+import containers : WorkStealingDeque;
+
+WorkStealingDeque!(ulong, 8) queue;
+
+assert(queue.tryPush(10));
+assert(queue.tryPush(20));
+
+auto stolen = queue.steal();
+assert(stolen.found);
+assert(stolen.value == 10);
+
+auto owner = queue.pop();
+assert(owner.found);
+assert(owner.value == 20);
+```
+
+The owner calls `tryPush` and `pop`; thieves call `steal` or
+`stealBatch`. The deque never resizes and does not choose scheduler overflow,
+parking, reclamation, or execution policy. A failed `tryPush` reports only
+that the bounded deque is full.
+
+Batch stealing writes into caller-owned storage:
+
+```d
+ulong[4] batch;
+const taken = queue.stealBatch(batch[]);
+```
+
+The first public API intentionally has no `size`, `empty`, or `full`
+snapshot. Such concurrent observations are immediately stale; the operation
+results are the actionable contract.
+
+The deque transports trivial atomically shared-compatible value
+representations and does not own referenced objects. Copy construction, move
+construction, assignment, and pass-by-value use are rejected because the
+concurrent object has identity. The hot operations are `@safe @nogc nothrow`,
+but `@safe` cannot enforce the one-owner protocol.
 
 ## Ring buffers
 
@@ -165,16 +213,15 @@ stale conservative roots.
 ## Direction
 
 The fixed- and runtime-capacity ring-buffer families are released through
-v0.1.1. The next development family is `StaticVector!(T, Capacity)`, promoted
-from consumer-driven M4 research only after lifetime, borrowing, GC, alignment,
-performance, build-cost and portability qualification.
+v0.1.1. The current development line additionally contains the qualified
+`StaticVector!(T, Capacity)` family and is promoting the independently
+qualified `WorkStealingDeque!(T, Capacity)` concurrent family.
 
 Future candidates include:
 
-- FIFO queues;
-- LIFO/FILO stacks;
-- deque-like structures where justified;
-- separately designed concurrent SPSC/MPMC structures.
+- synchronized bounded queues;
+- reusable scratch/arena/buffer-pool storage families;
+- separately designed SPSC/MPSC/MPMC concurrent families where justified.
 
 Materially different storage, ownership, overflow, allocation or concurrency
 semantics are represented explicitly rather than hidden behind one ambiguous
