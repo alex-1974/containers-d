@@ -84,7 +84,7 @@ Tracking: issue #21.
 
 Tracking: issues #31 and #32.
 
-## M4 — Consumer-driven container-family architecture — current
+## M4 — Consumer-driven container-family architecture — complete
 
 Tracking: issue #23.
 
@@ -169,17 +169,24 @@ Qualified adaptation modes:
 The M4.5 evidence finds no need for a universal public customization surface.
 See `docs/research/m4-5-consumer-adaptation.md`.
 
-### M4.6 — Public customization decision — next
+### M4.6 — Public customization decision — complete
 
-Only after M4.2-M4.5 evidence:
+Tracking: issue #52.
 
-- expose an advanced customization mechanism only if multiple materially
-  different consumers require it;
-- keep compiler/architecture implementation choices private and automatic;
-- reject policy combinations that change container semantics;
-- qualify diagnostics, template/build cost and binary size.
+Decision:
 
-M4 exits by admitting concrete production families, not a universal framework.
+- no advanced public customization/policy framework is exposed;
+- concrete semantic families remain the public API;
+- templates, traits, static if, typed mixins and compiler/architecture
+  capability selection remain package-internal implementation mechanisms;
+- public customization may be reconsidered only after multiple real consumers
+  require the same semantic family with incompatible private backend needs and
+  the diagnostics/build-cost/performance gates are qualified.
+
+Decision record: `docs/design/public-customization-decision.md`.
+
+M4 exits with concrete production families and qualified internal composition,
+not a universal framework.
 
 ## Later candidates
 
