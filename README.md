@@ -16,10 +16,16 @@ Install the published package through the DUB registry:
 dub add containers-d@0.1.1
 ```
 
-The package root is:
+The published v0.1.1 package root contains the ring-buffer family:
 
 ```d
 import containers : RingBuffer, StaticRingBuffer;
+```
+
+The current unreleased development branch additionally exports:
+
+```d
+import containers : StaticVector;
 ```
 
 ## Compatibility
@@ -34,10 +40,41 @@ Normal development is continuously checked with DMD 2.111 and LDC 1.41. The
 v0.1 release gate additionally qualifies DMD 2.112/2.113 and LDC 1.42/1.43 and
 runs portability jobs on Linux, Windows and macOS.
 
-Both public buffers are bounded, single-threaded containers. Nested/local struct
-element types carrying an outer context are deliberately not admitted in the
-v0.1 API; issue #10 owns research into that category. Concurrent SPSC/MPSC/MPMC
-containers, if added later, are separate type families.
+The public containers are single-threaded. Nested/local struct element types
+carrying an outer context remain excluded where their hidden context/lifetime
+contract is not qualified; issue #10 owns that research. Concurrent container
+families are designed separately rather than enabled through a policy switch.
+
+## Static vector
+
+The unreleased development branch adds `StaticVector!(T, Capacity)`: a
+compile-time fixed-capacity, runtime-length contiguous vector with inline
+storage and no backing allocation.
+
+```d
+import containers : StaticVector;
+
+StaticVector!(int, 4) values;
+values.pushBack(10);
+values.pushBack(20);
+
+assert(values.length == 2);
+assert(values.front == 10);
+assert(values.back == 20);
+assert(values[] == [10, 20]);
+
+values.popBack();
+assert(values[] == [10]);
+```
+
+`pushBack` is the precondition-based hot-path operation and requires spare
+capacity. `tryPushBack` is the checked non-overwriting form. `vector[]`
+borrows exactly the live contiguous prefix and must not outlive its owner.
+
+Scalar element types use an automatically selected direct inline
+representation. Non-trivial types use the qualified lifetime/storage machinery
+for construction, destruction, GC visibility and alignment. Those choices are
+implementation details, not public policy parameters.
 
 ## Ring buffers
 
@@ -127,10 +164,10 @@ stale conservative roots.
 
 ## Direction
 
-The fixed- and runtime-capacity ring-buffer families are implemented and their
-current hot paths have been qualified on the baseline DMD/LDC toolchains.
-v0.1.0 intentionally releases this narrow family before admitting another
-container abstraction.
+The fixed- and runtime-capacity ring-buffer families are released through
+v0.1.1. The next development family is `StaticVector!(T, Capacity)`, promoted
+from consumer-driven M4 research only after lifetime, borrowing, GC, alignment,
+performance, build-cost and portability qualification.
 
 Future candidates include:
 
