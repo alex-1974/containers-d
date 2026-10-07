@@ -1,0 +1,110 @@
+name: M6 ScratchBuffer Codegen
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - source/containers/research/scratch_buffer.d
+      - benchmarks/scratch_buffer_reuse_probe.d
+      - .github/workflows/scratch-buffer-codegen.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  codegen:
+    name: Scratch wrapper codegen / ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - dmd-2.111.0
+          - ldc-1.41.0
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ${{ matrix.compiler }}
+
+      - name: Build probe
+        shell: bash
+        run: |
+          mkdir -p build/m6-scratch-codegen
+
+          case "${{ matrix.compiler }}" in
+            dmd-*)
+              "$DC" \
+                -O \
+                -release \
+                -inline \
+                -boundscheck=off \
+                -Isource \
+                -of=build/m6-scratch-codegen/probe \
+                benchmarks/scratch_buffer_reuse_probe.d \
+                source/containers/research/scratch_buffer.d \
+                source/containers/internal/runtime_storage.d \
+                source/containers/internal/element_lifetime.d
+              ;;
+            ldc-*)
+              "$DC" \
+                -O3 \
+                -release \
+                -boundscheck=off \
+                -Isource \
+                -of=build/m6-scratch-codegen/probe \
+                benchmarks/scratch_buffer_reuse_probe.d \
+                source/containers/research/scratch_buffer.d \
+                source/containers/internal/runtime_storage.d \
+                source/containers/internal/element_lifetime.d
+              ;;
+          esac
+
+      - name: Compare wrapper code
+        shell: bash
+        run: |
+          BIN=build/m6-scratch-codegen/probe
+          OUT=build/m6-scratch-codegen
+
+          for symbol in bench_candidate bench_manual
+          do
+            objdump -d --no-show-raw-insn --disassemble="$symbol" "$BIN" \
+              > "$OUT/$symbol.asm"
+
+            sed -E 's/^[[:space:]]*[0-9a-f]+:[[:space:]]*//' "$OUT/$symbol.asm" | \
+              sed -E '/^$/d; /file format/d; /Disassembly of section/d; /^.*>:$/d' \
+              > "$OUT/$symbol.norm"
+
+            echo "$symbol instructions=$(wc -l < "$OUT/$symbol.norm")"
+          done
+
+          echo
+          echo "=== normalized diff ==="
+          diff -u "$OUT/bench_manual.norm" "$OUT/bench_candidate.norm" || true
+
+          {
+            echo "### ${{ matrix.compiler }} scratch wrapper codegen"
+            echo
+            echo "candidate instructions: $(wc -l < "$OUT/bench_candidate.norm")"
+            echo "manual instructions: $(wc -l < "$OUT/bench_manual.norm")"
+            echo
+            printf '%s\n' '```diff'
+            diff -u "$OUT/bench_manual.norm" "$OUT/bench_candidate.norm" || true
+            printf '%s\n' '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: m6-scratch-codegen-${{ matrix.compiler }}
+          path: |
+            build/m6-scratch-codegen/*.asm
+            build/m6-scratch-codegen/*.norm
+          if-no-files-found: error
