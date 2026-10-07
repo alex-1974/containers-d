@@ -15,6 +15,10 @@ enum size_t batchSize = 8;
 alias Candidate = ResearchWorkStealingDeque!(ulong, capacity);
 alias Reference = MarkedTopBatchBoundedWorkStealingDeque!(ulong, logSize);
 
+static assert(Candidate.capacity == Reference.capacity);
+static assert(Candidate.sizeof == Reference.sizeof);
+static assert(Candidate.alignof == Reference.alignof);
+
 private ulong mix(ulong state, ulong value)
     @safe @nogc nothrow
 {
