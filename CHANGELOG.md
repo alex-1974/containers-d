@@ -17,6 +17,13 @@ The project follows Semantic Versioning for published releases.
   storage qualification for non-trivial element types.
 - Scalar specializations selected automatically at compile time to retain
   consumer-local runtime and build/code-size quality.
+- `ScratchBuffer!T`, a reusable runtime-capacity contiguous typed scratch
+  owner with retained capacity across reset/reuse cycles.
+- Borrowed live-prefix access through `scratch[]`, explicit checked
+  `tryPushBack`, and empty-only `tryReserve` that never relocates live
+  elements.
+- Package-internal runtime-storage access factoring that preserves DMD hot-path
+  codegen while keeping allocation, alignment and GC ownership private.
 - `WorkStealingDeque!(T, Capacity)`, a bounded fixed-capacity
   single-owner / multi-thief concurrent deque with owner `tryPush`/`pop`,
   thief `steal`/`stealBatch`, and caller-owned batch output.
