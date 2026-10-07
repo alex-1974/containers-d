@@ -131,27 +131,52 @@ private ulong verifyStepwise(
             const manualAccepted =
                 manual.tryPushBack(value);
 
-            assert(candidateAccepted == manualAccepted);
-            assert(candidateAccepted);
+            if (candidateAccepted != manualAccepted ||
+                !candidateAccepted)
+            {
+                stderr.writeln(
+                    "push mismatch round=", round,
+                    " index=", i,
+                    " candidate=", candidateAccepted,
+                    " manual=", manualAccepted);
+                return ulong.max;
+            }
         }
 
         foreach (_; 0 .. input.length)
         {
-            assert(!candidate.empty);
-            assert(manual.length != 0);
+            if (candidate.empty || manual.length == 0)
+            {
+                stderr.writeln(
+                    "empty mismatch round=", round);
+                return ulong.max;
+            }
 
             const int candidateValue = candidate.front;
             const int manualValue = manual.popFront();
 
-            assert(candidateValue == manualValue);
+            if (candidateValue != manualValue)
+            {
+                stderr.writeln(
+                    "value mismatch round=", round,
+                    " candidate=", candidateValue,
+                    " manual=", manualValue);
+                return ulong.max;
+            }
 
             candidate.popFront();
 
             checksum = mix(checksum, candidateValue);
         }
 
-        assert(candidate.empty);
-        assert(manual.length == 0);
+        if (!candidate.empty || manual.length != 0)
+        {
+            stderr.writeln(
+                "post-round state mismatch round=", round,
+                " candidateEmpty=", candidate.empty,
+                " manualLength=", manual.length);
+            return ulong.max;
+        }
     }
 
     return checksum;
