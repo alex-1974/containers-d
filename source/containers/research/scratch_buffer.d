@@ -53,16 +53,6 @@ private:
         return *_storage.slotPointer(index);
     }
 
-    T[] borrowedLiveSlice() scope return @trusted @nogc nothrow
-    {
-        return _storage.slotSlice(0, _length);
-    }
-
-    const(T)[] borrowedLiveSlice() const scope return @trusted @nogc nothrow
-    {
-        return _storage.slotSlice(0, _length);
-    }
-
     void endSlotLifetime(size_t index)
     {
         endElementLifetime(_storage.slotPointer(index));
@@ -147,14 +137,16 @@ public:
      * Any successful structural mutation, reset, move or destruction
      * invalidates previous borrows.
      */
+    pragma(inline, true)
     T[] opSlice() scope return @trusted @nogc nothrow
     {
-        return borrowedLiveSlice();
+        return _storage.slotSlice(0, _length);
     }
 
+    pragma(inline, true)
     const(T)[] opSlice() const scope return @trusted @nogc nothrow
     {
-        return borrowedLiveSlice();
+        return _storage.slotSlice(0, _length);
     }
 
     /**
@@ -162,6 +154,7 @@ public:
      *
      * Returns false when full. No allocation or growth is attempted.
      */
+    pragma(inline, true)
     bool tryPushBack(U)(auto ref U value)
     if (is(Unqual!U == T) &&
         __traits(compiles, emplace(cast(T*) null, forward!value)))
@@ -194,6 +187,7 @@ public:
      *
      * No backing allocation or deallocation occurs.
      */
+    pragma(inline, true)
     void reset()
     {
         static if (!elementNeedsDestruction!T &&
