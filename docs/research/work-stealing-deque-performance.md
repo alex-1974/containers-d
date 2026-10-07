@@ -80,3 +80,62 @@ physical cores for the requested topology and controlled affinity/noise.
 
 Until such a host is used, direction-changing hosted-runner timings are
 research diagnostics only.
+
+## Native AArch64 physical-core qualification
+
+The native qualification runner is ARM Neoverse-N2 with four physical cores
+and one hardware thread per core.
+
+The balanced paired benchmark uses:
+
+- producer pinned to CPU 0;
+- one thief on CPU 1 or three thieves on CPUs 1..3;
+- equal candidate-first/reference-first sample counts;
+- median of per-pair candidate/reference ratios.
+
+Final exact-head results:
+
+| Thieves | Batch | Paired ratio |
+|---:|---:|---:|
+| 1 | no | 1.02887 |
+| 1 | yes | 0.988969 |
+| 3 | no | 0.858148 |
+| 3 | yes | 0.964866 |
+
+All qualified workloads remain below the 1.10 material-regression threshold.
+
+The same run exposes very large first/second execution-order effects in some
+subcases. This validates the use of balanced per-pair ratios and explains why
+earlier ratio-of-independent-medians measurements were not acceptable as a
+promotion gate.
+
+## Native AArch64 code-generation parity
+
+On LDC 1.41 the normalized instruction streams are identical between the
+containers-d candidate and the pinned P08e reference:
+
+| Workload | Candidate instructions | Reference instructions |
+|---|---:|---:|
+| owner push/pop | 70 | 70 |
+| single steal | 61 | 61 |
+| batch steal wrapper | 4 | 4 |
+
+Normalization removes only absolute function/branch addresses. Opcodes,
+registers, memory ordering instructions and control-flow instruction forms must
+remain identical.
+
+## Final research performance conclusion
+
+No containers-d-specific hot-path optimization is required before production
+promotion.
+
+The candidate has:
+
+- exact semantic parity with pinned P08e;
+- equal queue size/alignment;
+- exact DMD/LDC retired-instruction parity on x86_64;
+- exact LDC AArch64 normalized instruction-stream parity;
+- no material regression on the four-physical-core AArch64 contention gate.
+
+The external concurrency-d research remains immutable reference evidence. Any
+future adoption by concurrency-d is a separate project decision.
