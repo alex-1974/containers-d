@@ -1,81 +1,51 @@
 module containers.blocking_queue_storage_parity_probe;
 
-import containers.research.blocking_queue :
-    BlockingQueuePopResult,
-    BlockingQueuePopStatus,
-    BlockingQueuePushResult,
-    ResearchBlockingQueue;
-import core.sync.condition : Condition;
-import core.sync.mutex : Mutex;
+import containers.runtime_ring_buffer : RingBuffer;
 import std.conv : to;
 import std.stdio : stderr, writeln;
 
 enum size_t capacity = 64;
 
-private final class ManualBlockingQueue
+private struct ManualRing
 {
-    private Mutex _mutex;
-    private Condition _notEmpty;
-    private int[] _storage;
-    private size_t _head;
-    private size_t _length;
-    private bool _closed;
+    int[] storage;
+    size_t head;
+    size_t length;
 
     this(size_t capacity)
     {
-        _mutex = new Mutex;
-        _notEmpty = new Condition(_mutex);
-        _storage = new int[](capacity);
+        storage = new int[](capacity);
     }
 
-    BlockingQueuePushResult tryPush(int value)
+    bool tryPushBack(int value) @safe @nogc nothrow
     {
-        synchronized (_mutex)
-        {
-            if (_closed)
-                return BlockingQueuePushResult.closed;
+        if (length == storage.length)
+            return false;
 
-            if (_length == _storage.length)
-                return BlockingQueuePushResult.full;
+        const physical =
+            (head + length) % storage.length;
 
-            const physical =
-                (_head + _length) % _storage.length;
-
-            _storage[physical] = value;
-            ++_length;
-
-            _notEmpty.notify();
-            return BlockingQueuePushResult.pushed;
-        }
+        storage[physical] = value;
+        ++length;
+        return true;
     }
 
-    BlockingQueuePopResult!int waitPop()
+    int popFront() @safe @nogc nothrow
     {
-        synchronized (_mutex)
-        {
-            while (_length == 0 && !_closed)
-                _notEmpty.wait();
+        assert(length != 0);
 
-            if (_length == 0)
-                return BlockingQueuePopResult!int(
-                    BlockingQueuePopStatus.closed,
-                    int.init);
+        const value = storage[head];
 
-            const value = _storage[_head];
+        ++head;
+        if (head == storage.length)
+            head = 0;
 
-            ++_head;
-            if (_head == _storage.length)
-                _head = 0;
+        --length;
 
-            --_length;
+        if (length == 0)
+            head = 0;
 
-            if (_length == 0)
-                _head = 0;
-
-            return BlockingQueuePopResult!int(
-                BlockingQueuePopStatus.value,
-                value);
-        }
+        return value;
     }
 }
 
@@ -88,7 +58,7 @@ private ulong mix(ulong state, int value) @safe @nogc nothrow
 
 pragma(inline, false)
 extern(C) ulong bench_candidate(
-    ResearchBlockingQueue!int queue,
+    ref RingBuffer!int storage,
     scope const(int)[] input,
     size_t rounds)
 {
@@ -101,20 +71,14 @@ extern(C) ulong bench_candidate(
             const value =
                 seed ^ cast(int)(round + i);
 
-            assert(
-                queue.tryPush(value) ==
-                BlockingQueuePushResult.pushed);
+            assert(storage.tryPushBack(value));
         }
 
         foreach (_; 0 .. input.length)
         {
-            auto result = queue.waitPop();
-
-            assert(
-                result.status ==
-                BlockingQueuePopStatus.value);
-
-            checksum = mix(checksum, result.value);
+            const value = storage.front;
+            storage.popFront();
+            checksum = mix(checksum, value);
         }
     }
 
@@ -123,7 +87,7 @@ extern(C) ulong bench_candidate(
 
 pragma(inline, false)
 extern(C) ulong bench_manual(
-    ManualBlockingQueue queue,
+    ref ManualRing storage,
     scope const(int)[] input,
     size_t rounds)
 {
@@ -136,21 +100,11 @@ extern(C) ulong bench_manual(
             const value =
                 seed ^ cast(int)(round + i);
 
-            assert(
-                queue.tryPush(value) ==
-                BlockingQueuePushResult.pushed);
+            assert(storage.tryPushBack(value));
         }
 
         foreach (_; 0 .. input.length)
-        {
-            auto result = queue.waitPop();
-
-            assert(
-                result.status ==
-                BlockingQueuePopStatus.value);
-
-            checksum = mix(checksum, result.value);
-        }
+            checksum = mix(checksum, storage.popFront());
     }
 
     return checksum;
@@ -184,21 +138,17 @@ void main(string[] args)
     {
         case "candidate":
         {
-            auto queue =
-                new ResearchBlockingQueue!int(capacity);
-
+            auto storage = RingBuffer!int(capacity);
             writeln("candidate ",
-                bench_candidate(queue, input[], rounds));
+                bench_candidate(storage, input[], rounds));
             break;
         }
 
         case "manual":
         {
-            auto queue =
-                new ManualBlockingQueue(capacity);
-
+            auto storage = ManualRing(capacity);
             writeln("manual ",
-                bench_manual(queue, input[], rounds));
+                bench_manual(storage, input[], rounds));
             break;
         }
     }
