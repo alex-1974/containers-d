@@ -22,8 +22,11 @@ private struct ManualRing
         if (length == storage.length)
             return false;
 
+        const tailRoom = storage.length - head;
         const physical =
-            (head + length) % storage.length;
+            length < tailRoom
+                ? head + length
+                : length - tailRoom;
 
         storage[physical] = value;
         ++length;
