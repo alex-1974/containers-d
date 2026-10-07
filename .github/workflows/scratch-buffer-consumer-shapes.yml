@@ -1,0 +1,154 @@
+name: M6 ScratchBuffer Consumer Shapes
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - source/containers/research/scratch_buffer.d
+      - source/containers/internal/runtime_storage.d
+      - benchmarks/scratch_buffer_consumer_shapes_probe.d
+      - .github/workflows/scratch-buffer-consumer-shapes.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  retired-instructions:
+    name: Consumer shapes Ir / ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - dmd-2.111.0
+          - ldc-1.41.0
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ${{ matrix.compiler }}
+
+      - name: Install Callgrind
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y valgrind
+
+      - name: Build profile probe
+        shell: bash
+        run: |
+          mkdir -p build/m6-consumer-shapes
+
+          case "${{ matrix.compiler }}" in
+            dmd-*)
+              "$DC" \
+                -O \
+                -release \
+                -inline \
+                -boundscheck=off \
+                -Isource \
+                -of=build/m6-consumer-shapes/probe \
+                benchmarks/scratch_buffer_consumer_shapes_probe.d \
+                source/containers/research/scratch_buffer.d \
+                source/containers/internal/runtime_storage.d \
+                source/containers/internal/element_lifetime.d
+              ;;
+            ldc-*)
+              "$DC" \
+                -O3 \
+                -release \
+                -boundscheck=off \
+                -Isource \
+                -of=build/m6-consumer-shapes/probe \
+                benchmarks/scratch_buffer_consumer_shapes_probe.d \
+                source/containers/research/scratch_buffer.d \
+                source/containers/internal/runtime_storage.d \
+                source/containers/internal/element_lifetime.d
+              ;;
+          esac
+
+      - name: Verify semantic parity
+        shell: bash
+        run: |
+          BIN=build/m6-consumer-shapes/probe
+
+          check_pair() {
+            profile="$1"
+            rounds="$2"
+            candidate=$("$BIN" "candidate-$profile" "$rounds")
+            manual=$("$BIN" "manual-$profile" "$rounds")
+            echo "$profile candidate=$candidate manual=$manual"
+            test "$candidate" = "$manual"
+          }
+
+          check_pair dcanvas 1024
+          check_pair geometry 512
+          check_pair osm-raster 64
+
+      - name: Measure representative profiles
+        shell: bash
+        run: |
+          BIN=build/m6-consumer-shapes/probe
+          RESULTS=build/m6-consumer-shapes/results.tsv
+          printf 'compiler\tprofile\tvariant\trounds\tIr\tchecksum\n' > "$RESULTS"
+
+          measure() {
+            profile="$1"
+            variant="$2"
+            rounds="$3"
+            symbol="bench_${variant}_${profile//-/_}"
+            out="build/m6-consumer-shapes/callgrind-${profile}-${variant}.out"
+
+            checksum=$("$BIN" "$variant-$profile" "$rounds")
+
+            valgrind \
+              --tool=callgrind \
+              --collect-atstart=no \
+              --toggle-collect="$symbol" \
+              --callgrind-out-file="$out" \
+              "$BIN" "$variant-$profile" "$rounds" \
+              >/dev/null 2>&1
+
+            ir=$(awk '/^summary:/ {print $2}' "$out")
+            printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+              "${{ matrix.compiler }}" "$profile" "$variant" "$rounds" "$ir" "$checksum" \
+              >> "$RESULTS"
+          }
+
+          measure dcanvas candidate 8192
+          measure dcanvas manual 8192
+          measure geometry candidate 4096
+          measure geometry manual 4096
+          measure osm-raster candidate 256
+          measure osm-raster manual 256
+
+          cat "$RESULTS"
+
+          for profile in dcanvas geometry osm-raster
+          do
+            candidate=$(awk -F '\t' -v p="$profile" '$2 == p && $3 == "candidate" {print $5}' "$RESULTS")
+            manual=$(awk -F '\t' -v p="$profile" '$2 == p && $3 == "manual" {print $5}' "$RESULTS")
+
+            awk -v p="$profile" -v c="$candidate" -v m="$manual" 'BEGIN {
+              delta = c - m;
+              pct = m == 0 ? 0 : delta * 100.0 / m;
+              printf "%s manual=%d candidate=%d delta=%+d (%+.6f%%)\n", p, m, c, delta, pct;
+              if (pct > 10.0) exit 1;
+            }'
+          done
+
+      - name: Upload evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: m6-consumer-shapes-${{ matrix.compiler }}
+          path: |
+            build/m6-consumer-shapes/results.tsv
+            build/m6-consumer-shapes/callgrind-*.out
+          if-no-files-found: error
