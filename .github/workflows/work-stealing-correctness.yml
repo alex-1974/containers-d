@@ -58,3 +58,22 @@ jobs:
               --root=tests/work-stealing-correctness \
               --compiler="$DC" \
               --force
+
+      - name: Negative identity and element compile gates
+        shell: bash
+        run: |
+          for root in \
+            tests/compile-negative/work-stealing-copy \
+            tests/compile-negative/work-stealing-assign \
+            tests/compile-negative/work-stealing-pass-by-value \
+            tests/compile-negative/work-stealing-unsupported-element \
+            tests/compile-negative/work-stealing-unshared-pointer
+          do
+            if dub build \
+                --root="$root" \
+                --compiler="$DC" \
+                --force; then
+              echo "Expected work-stealing contract violation to fail: $root"
+              false
+            fi
+          done
