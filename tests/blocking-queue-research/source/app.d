@@ -138,6 +138,59 @@ private void testCloseAndDrain()
     assert(second.value == 20);
 }
 
+private void testWorkerReferencesKeepQueueAlive()
+{
+    alias Queue = ResearchBlockingQueue!int;
+
+    Queue queue = new Queue(2);
+
+    shared bool producerDone;
+    shared bool consumerDone;
+    int received = -1;
+
+    Thread makeConsumer(Queue owned)
+    {
+        return new Thread({
+            auto value = owned.waitPop();
+            assert(value.status == BlockingQueuePopStatus.value);
+            received = value.value;
+
+            auto done = owned.waitPop();
+            assert(done.status == BlockingQueuePopStatus.closed);
+
+            atomicStore(consumerDone, true);
+        });
+    }
+
+    Thread makeProducer(Queue owned)
+    {
+        return new Thread({
+            assert(
+                owned.tryPush(91) ==
+                BlockingQueuePushResult.pushed);
+            assert(owned.close);
+            atomicStore(producerDone, true);
+        });
+    }
+
+    auto consumer = makeConsumer(queue);
+    auto producer = makeProducer(queue);
+
+    consumer.start();
+    producer.start();
+
+    // The caller drops its own class reference. Each worker owns an
+    // independent captured reference for the duration of its operation.
+    queue = null;
+
+    producer.join();
+    consumer.join();
+
+    assert(atomicLoad(producerDone));
+    assert(atomicLoad(consumerDone));
+    assert(received == 91);
+}
+
 private void testMpmcExactAccounting()
 {
     enum int perProducer = 2_000;
@@ -245,5 +298,6 @@ void main()
     testCloseWakeAll();
     testSyntheticWakeRechecksPredicate();
     testCloseAndDrain();
+    testWorkerReferencesKeepQueueAlive();
     testMpmcExactAccounting();
 }
