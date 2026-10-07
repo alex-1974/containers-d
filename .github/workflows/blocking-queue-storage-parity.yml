@@ -81,10 +81,12 @@ jobs:
           BIN=build/m7-blocking-storage/probe
           ROUNDS=4096
 
+          verify=$("$BIN" verify "$ROUNDS" | awk '{print $2}')
           candidate=$("$BIN" candidate "$ROUNDS" | awk '{print $2}')
           manual=$("$BIN" manual "$ROUNDS" | awk '{print $2}')
 
-          echo "candidate=$candidate manual=$manual"
+          echo "verify=$verify candidate=$candidate manual=$manual"
+          test "$verify" = "$candidate"
           test "$candidate" = "$manual"
 
       - name: Measure storage composition
