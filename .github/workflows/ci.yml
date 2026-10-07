@@ -72,6 +72,10 @@ jobs:
         shell: bash
         run: dub run --root=tests/static-ring-overalignment-gc --compiler="$DC" --force
 
+      - name: Inline storage GC reachability
+        shell: bash
+        run: dub run --root=tests/inline-storage-gc --compiler="$DC" --force
+
       - name: DIP1000 borrowed-slice negative compile
         shell: bash
         run: |
