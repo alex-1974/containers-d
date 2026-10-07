@@ -121,7 +121,11 @@ public:
     pragma(inline, true)
     size_t capacity() const @safe @nogc nothrow
     {
-        return _storage.capacity;
+        // RuntimeStorageOwner is package-internal and its capacity field is
+        // package-visible specifically so hot consumers do not need an
+        // imported accessor call. Keep the public RingBuffer property while
+        // exposing the raw word directly to local RingSequenceOps codegen.
+        return _storage._capacity;
     }
 
     /// Number of live elements.
