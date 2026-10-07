@@ -75,9 +75,10 @@ jobs:
           normalize() {
             input="$1"
             output="$2"
-            sed -E 's/^[[:space:]]*[0-9a-f]+:[[:space:]]*//' "$input" | \
+            sed -E '/^$/d; /file format/d; /Disassembly of section/d; /^[[:space:]]*[0-9a-f]+ <[^>]+>:/d' "$input" | \
+              sed -E 's/^[[:space:]]*[0-9a-f]+:[[:space:]]*//' | \
               sed -E 's/[[:space:]]+<[^>]+>//g' | \
-              sed -E '/^$/d; /file format/d; /Disassembly of section/d; /^.*>:$/d' > "$output"
+              sed -E 's/^([[:space:]]*(b(\.[a-z]+)?|bl|cbz|cbnz|tbz|tbnz)[[:space:]].*[,[:space:]])[0-9a-f]+([[:space:]]*(\/\/.*)?)$/\1<TARGET>\3/' > "$output"
           }
 
           for workload in owner_pair single_steal batch_steal
@@ -93,10 +94,11 @@ jobs:
             echo "reference instructions: $(wc -l < "$OUT/reference-${workload}.norm")"
 
             if diff -u "$OUT/reference-${workload}.norm" "$OUT/candidate-${workload}.norm" > "$OUT/${workload}.diff"; then
-              echo "normalized wrapper code: identical"
+              echo "normalized instruction stream: identical"
             else
-              echo "normalized wrapper code differs"
+              echo "normalized instruction stream differs"
               cat "$OUT/${workload}.diff"
+              exit 1
             fi
           done
 
