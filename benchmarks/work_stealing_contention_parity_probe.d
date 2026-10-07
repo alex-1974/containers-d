@@ -12,6 +12,15 @@ import core.atomic :
     atomicStore;
 import core.thread : Thread;
 import core.time : MonoTime;
+version (linux)
+{
+    import core.sys.linux.sched :
+        CPU_ISSET,
+        CPU_SET,
+        cpu_set_t,
+        sched_getaffinity,
+        sched_setaffinity;
+}
 import std.algorithm : sort;
 import std.conv : to;
 import std.stdio : stderr, writeln;
@@ -22,6 +31,51 @@ enum size_t batchWidth = 8;
 
 alias Candidate = ResearchWorkStealingDeque!(ulong, capacity);
 alias Reference = MarkedTopBatchBoundedWorkStealingDeque!(ulong, logSize);
+
+private size_t[] discoverAllowedCpus()
+{
+    version (linux)
+    {
+        cpu_set_t set = cpu_set_t.init;
+
+        assert(
+            sched_getaffinity(
+                0,
+                cpu_set_t.sizeof,
+                &set) == 0);
+
+        size_t[] cpus;
+
+        foreach (cpu;
+                 0 .. cpu_set_t.sizeof * 8)
+        {
+            if (CPU_ISSET(cpu, &set))
+                cpus ~= cpu;
+        }
+
+        assert(cpus.length > 0);
+        return cpus;
+    }
+    else
+    {
+        return [size_t(0)];
+    }
+}
+
+private void pinCurrentThread(size_t cpu)
+{
+    version (linux)
+    {
+        cpu_set_t set = cpu_set_t.init;
+        CPU_SET(cpu, &set);
+
+        assert(
+            sched_setaffinity(
+                0,
+                cpu_set_t.sizeof,
+                &set) == 0);
+    }
+}
 
 private ulong xorOneTo(ulong n)
     @safe @nogc nothrow
@@ -38,11 +92,13 @@ private ulong xorOneTo(ulong n)
 private double runTransfer(Q)(
     size_t thiefCount,
     bool batch,
-    size_t total)
+    size_t total,
+    const size_t[] cpus)
 {
     assert(thiefCount > 0);
     assert(thiefCount <= 4);
     assert(total > capacity);
+    assert(cpus.length > 0);
 
     auto queue = new Q;
 
@@ -58,6 +114,9 @@ private double runTransfer(Q)(
     {
         threads[index] =
             new Thread({
+                pinCurrentThread(
+                    cpus[(index + 1) % cpus.length]);
+
                 while (!atomicLoad!(MemoryOrder.acq)(start))
                 {
                 }
@@ -116,6 +175,8 @@ private double runTransfer(Q)(
 
         threads[index].start();
     }
+
+    pinCurrentThread(cpus[0]);
 
     const before = MonoTime.currTime;
 
@@ -191,10 +252,12 @@ private void compare(
     size_t warmups,
     size_t samples)
 {
+    const cpus = discoverAllowedCpus();
+
     foreach (_; 0 .. warmups)
     {
-        runTransfer!Candidate(thiefCount, batch, total);
-        runTransfer!Reference(thiefCount, batch, total);
+        runTransfer!Candidate(thiefCount, batch, total, cpus);
+        runTransfer!Reference(thiefCount, batch, total, cpus);
     }
 
     auto candidate = new double[](samples);
@@ -206,19 +269,19 @@ private void compare(
         {
             candidate[sample] =
                 runTransfer!Candidate(
-                    thiefCount, batch, total);
+                    thiefCount, batch, total, cpus);
             reference[sample] =
                 runTransfer!Reference(
-                    thiefCount, batch, total);
+                    thiefCount, batch, total, cpus);
         }
         else
         {
             reference[sample] =
                 runTransfer!Reference(
-                    thiefCount, batch, total);
+                    thiefCount, batch, total, cpus);
             candidate[sample] =
                 runTransfer!Candidate(
-                    thiefCount, batch, total);
+                    thiefCount, batch, total, cpus);
         }
     }
 
@@ -231,6 +294,7 @@ private void compare(
         "thieves=", thiefCount,
         " batch=", batch ? 1 : 0,
         " items=", total,
+        " allowed_cpus=", cpus.length,
         " candidate_ns=", candidateMedian,
         " reference_ns=", referenceMedian,
         " ratio=", candidateMedian / referenceMedian);
