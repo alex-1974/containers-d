@@ -8,6 +8,7 @@ module containers.runtime_ring_buffer;
 import containers.internal.element_lifetime :
     EndElementLifetimeOps,
     PlacementMoveOps;
+import containers.internal.ring_sequence : RingSequenceOps;
 import containers.internal.runtime_storage : RuntimeStorageOwner;
 import core.lifetime : emplace, forward;
 import std.traits : hasIndirections, isNested, Unqual;
@@ -34,8 +35,7 @@ private:
     mixin EndElementLifetimeOps!T;
 
     RuntimeStorageOwner!T _storage;
-    size_t _head;
-    size_t _length;
+    mixin RingSequenceOps;
 
     ref T borrowedSlot(
         size_t physicalIndex) scope return @trusted
@@ -67,36 +67,10 @@ private:
         return _storage.slotSlice(physicalStart, count);
     }
 
-    size_t physicalIndex(size_t logicalIndex) const @safe @nogc nothrow
-    {
-        assert(logicalIndex < capacity);
-        assert(capacity != 0);
-        assert(_head < capacity);
-
-        // Overflow-safe for every representable runtime capacity. M3.3 will
-        // benchmark alternative runtime wraparound shapes before specializing.
-        const tailRoom = capacity - _head;
-
-        if (logicalIndex < tailRoom)
-            return _head + logicalIndex;
-
-        return logicalIndex - tailRoom;
-    }
-
     void endSlotLifetime(size_t physicalIndex)
     {
         endElementLifetime(_storage.slotPointer(physicalIndex));
         _storage.clearVacatedSlot(physicalIndex);
-    }
-
-    void advanceHead() @safe @nogc nothrow
-    {
-        assert(capacity != 0);
-        assert(_head < capacity);
-
-        ++_head;
-        if (_head == capacity)
-            _head = 0;
     }
 
 public:
@@ -323,12 +297,7 @@ public:
         const physical = _head;
         endSlotLifetime(physical);
 
-        --_length;
-
-        if (_length == 0)
-            _head = 0;
-        else
-            advanceHead();
+        consumeFrontState();
     }
 
     /**
