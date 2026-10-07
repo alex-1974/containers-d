@@ -244,8 +244,18 @@ private void compare(
         runTransfer!Reference(thiefCount, batch, total);
     }
 
+    assert((samples & 1) == 0);
+
     auto candidate = new double[](samples);
     auto reference = new double[](samples);
+    auto pairedRatios = new double[](samples);
+    auto candidateFirstRatios =
+        new double[](samples / 2);
+    auto referenceFirstRatios =
+        new double[](samples / 2);
+
+    size_t candidateFirstIndex;
+    size_t referenceFirstIndex;
 
     foreach (sample; 0 .. samples)
     {
@@ -267,12 +277,31 @@ private void compare(
                 runTransfer!Candidate(
                     thiefCount, batch, total);
         }
+
+        const ratio =
+            candidate[sample] /
+            reference[sample];
+
+        pairedRatios[sample] = ratio;
+
+        if ((sample & 1) == 0)
+            candidateFirstRatios[
+                candidateFirstIndex++] = ratio;
+        else
+            referenceFirstRatios[
+                referenceFirstIndex++] = ratio;
     }
 
     const candidateMedian =
         median(candidate);
     const referenceMedian =
         median(reference);
+    const pairedMedian =
+        median(pairedRatios);
+    const candidateFirstMedian =
+        median(candidateFirstRatios);
+    const referenceFirstMedian =
+        median(referenceFirstRatios);
 
     writeln(
         "thieves=", thiefCount,
@@ -280,7 +309,9 @@ private void compare(
         " items=", total,
         " candidate_ns=", candidateMedian,
         " reference_ns=", referenceMedian,
-        " ratio=", candidateMedian / referenceMedian);
+        " paired_ratio=", pairedMedian,
+        " candidate_first_ratio=", candidateFirstMedian,
+        " reference_first_ratio=", referenceFirstMedian);
 }
 
 void main(string[] args)
