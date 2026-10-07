@@ -100,10 +100,10 @@ jobs:
 
           : > "$RESULTS"
 
-          "$BIN" 1 0 262144 2 7 | tee -a "$RESULTS"
-          "$BIN" 1 1 262144 2 7 | tee -a "$RESULTS"
-          "$BIN" 4 0 262144 2 7 | tee -a "$RESULTS"
-          "$BIN" 4 1 262144 2 7 | tee -a "$RESULTS"
+          "$BIN" 1 0 4194304 1 9 | tee -a "$RESULTS"
+          "$BIN" 1 1 4194304 1 9 | tee -a "$RESULTS"
+          "$BIN" 4 0 2097152 1 9 | tee -a "$RESULTS"
+          "$BIN" 4 1 2097152 1 9 | tee -a "$RESULTS"
 
           {
             echo "### ${{ matrix.compiler }} — paired P08e contention parity"
@@ -111,7 +111,7 @@ jobs:
             cat "$RESULTS"
             echo
             echo "Ratios compare containers-d candidate / pinned P08e on the same runner."
-            echo "These are research measurements, not a cross-machine absolute-performance claim."
+            echo "Long runs reduce thread-start noise; these are hosted-runner parity canaries, not pinned absolute-performance claims."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload evidence
