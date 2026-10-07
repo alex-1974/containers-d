@@ -140,13 +140,19 @@ public:
     pragma(inline, true)
     T[] opSlice()() scope return @trusted @nogc nothrow
     {
-        return _storage.slotSlice(0, _length);
+        if (_length == 0)
+            return null;
+
+        return _storage.slotPointer(0)[0 .. _length];
     }
 
     pragma(inline, true)
     const(T)[] opSlice()() const scope return @trusted @nogc nothrow
     {
-        return _storage.slotSlice(0, _length);
+        if (_length == 0)
+            return null;
+
+        return _storage.slotPointer(0)[0 .. _length];
     }
 
     /**
