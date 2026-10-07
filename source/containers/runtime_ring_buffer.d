@@ -118,24 +118,28 @@ public:
     }
 
     /// Maximum number of live elements.
+    pragma(inline, true)
     size_t capacity() const @safe @nogc nothrow
     {
         return _storage.capacity;
     }
 
     /// Number of live elements.
+    pragma(inline, true)
     size_t length() const @safe @nogc nothrow
     {
         return _length;
     }
 
     /// Whether no live elements are stored.
+    pragma(inline, true)
     bool empty() const @safe @nogc nothrow
     {
         return _length == 0;
     }
 
     /// Whether no additional element can be inserted.
+    pragma(inline, true)
     bool full() const @safe @nogc nothrow
     {
         return _length == capacity;
