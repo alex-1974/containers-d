@@ -13,16 +13,53 @@ module containers.ring_buffer;
 import core.lifetime : emplace, forward, moveEmplace;
 import std.traits : hasElaborateDestructor, hasIndirections, isNested, Unqual;
 
+private alias StaticRingNativePointer = void*;
+
+private enum size_t staticRingQualifiedInlineAlignment =
+    staticRingQualifiedInlineAlignmentImpl();
+
+private size_t staticRingQualifiedInlineAlignmentImpl()
+{
+    version (LDC)
+    {
+        version (linux)
+        {
+            version (X86_64)
+                return 64;
+            else version (AArch64)
+                return 64;
+        }
+    }
+
+    return StaticRingNativePointer.alignof;
+}
+
 private union StaticRingStorage(T, size_t Capacity)
 {
+    enum bool usesDynamicAlignment =
+        T.alignof > staticRingQualifiedInlineAlignment;
+
+    enum size_t alignmentSlack =
+        usesDynamicAlignment ? T.alignof - 1 : 0;
+
+    static assert(
+        Capacity <= (size_t.max - alignmentSlack) / T.sizeof,
+        "StaticRingBuffer storage size overflows size_t");
+
+    enum size_t byteLength =
+        Capacity * T.sizeof + alignmentSlack;
+
     static if (hasIndirections!T)
     {
-        static if (isNested!T)
+        static if (usesDynamicAlignment || isNested!T)
         {
-            // Embedding a nested T would make this storage aggregate inherit
-            // T's hidden context pointer. Use a conservative scan shape instead
-            // while issue #10 researches nested-element semantics separately.
-            void[T.sizeof * Capacity] conservativeGcShape;
+            // A runtime-selected slot-zero offset cannot be represented by an
+            // exact T[Capacity] pointer bitmap. Conservatively expose every
+            // payload pointer word to the GC instead.
+            enum size_t pointerWordCount =
+                (byteLength + StaticRingNativePointer.sizeof - 1) /
+                StaticRingNativePointer.sizeof;
+            StaticRingNativePointer[pointerWordCount] conservativeGcShape;
         }
         else
         {
@@ -32,7 +69,16 @@ private union StaticRingStorage(T, size_t Capacity)
         }
     }
 
-    align(T.alignof) ubyte[T.sizeof * Capacity] bytes;
+    static if (usesDynamicAlignment)
+    {
+        // Do not depend on aggregate over-alignment for compiler/target
+        // combinations where issue #31 demonstrated that it can be lost.
+        ubyte[byteLength] bytes;
+    }
+    else
+    {
+        align(T.alignof) ubyte[byteLength] bytes;
+    }
 }
 
 version (unittest)
@@ -183,6 +229,8 @@ struct StaticRingBuffer(T, size_t Capacity)
         "StaticRingBuffer capacity must be greater than zero");
     static assert(T.sizeof > 0,
         "StaticRingBuffer requires an element type with non-zero size");
+    static assert((T.alignof & (T.alignof - 1)) == 0,
+        "StaticRingBuffer requires power-of-two T alignment");
     static assert(!(is(T == struct) && isNested!T && hasIndirections!T),
         "StaticRingBuffer v0.1 does not support nested/local struct element types with hidden context/indirections");
 
@@ -217,22 +265,53 @@ private:
     {
         assert(physicalIndex < Capacity);
 
-        // _storage is aligned to T.alignof and physicalIndex selects one
-        // T-sized slot inside it. The compiler cannot prove that converting
-        // this raw byte address to T* preserves alignment; keep only that cast
-        // inside the trusted boundary. Callers remain responsible for using the
-        // pointer only according to the slot's live-object state.
-        return (() @trusted =>
-            cast(T*) (_storage.bytes.ptr + physicalIndex * T.sizeof))();
+        static if (!Storage.usesDynamicAlignment)
+        {
+            // Preserve the released v0.1 direct-base expression exactly for
+            // element alignments the compiler/target can embed correctly.
+            return (() @trusted =>
+                cast(T*) (_storage.bytes.ptr + physicalIndex * T.sizeof))();
+        }
+        else
+        {
+            const address = (() @trusted =>
+                cast(size_t) _storage.bytes.ptr)();
+            const mask = T.alignof - 1;
+            const misalignment = address & mask;
+            const baseOffset = (T.alignof - misalignment) & mask;
+            const begin = baseOffset + physicalIndex * T.sizeof;
+
+            assert(begin <= _storage.bytes.length - T.sizeof);
+
+            return (() @trusted =>
+                cast(T*) (_storage.bytes.ptr + begin))();
+        }
     }
 
     const(T)* slotPointer(size_t physicalIndex) const scope return nothrow @safe @nogc
     {
         assert(physicalIndex < Capacity);
 
-        // Same aligned-slot argument as the mutable overload above.
-        return (() @trusted =>
-            cast(const(T)*) (_storage.bytes.ptr + physicalIndex * T.sizeof))();
+        static if (!Storage.usesDynamicAlignment)
+        {
+            return (() @trusted =>
+                cast(const(T)*) (
+                    _storage.bytes.ptr + physicalIndex * T.sizeof))();
+        }
+        else
+        {
+            const address = (() @trusted =>
+                cast(size_t) _storage.bytes.ptr)();
+            const mask = T.alignof - 1;
+            const misalignment = address & mask;
+            const baseOffset = (T.alignof - misalignment) & mask;
+            const begin = baseOffset + physicalIndex * T.sizeof;
+
+            assert(begin <= _storage.bytes.length - T.sizeof);
+
+            return (() @trusted =>
+                cast(const(T)*) (_storage.bytes.ptr + begin))();
+        }
     }
 
     T[] slotSlice(
@@ -343,8 +422,21 @@ private:
     {
         static if (hasIndirections!T)
         {
-            const begin = physicalIndex * T.sizeof;
-            _storage.bytes[begin .. begin + T.sizeof] = 0;
+            static if (!Storage.usesDynamicAlignment)
+            {
+                const begin = physicalIndex * T.sizeof;
+                _storage.bytes[begin .. begin + T.sizeof] = 0;
+            }
+            else
+            {
+                const address = (() @trusted =>
+                    cast(size_t) _storage.bytes.ptr)();
+                const mask = T.alignof - 1;
+                const misalignment = address & mask;
+                const baseOffset = (T.alignof - misalignment) & mask;
+                const begin = baseOffset + physicalIndex * T.sizeof;
+                _storage.bytes[begin .. begin + T.sizeof] = 0;
+            }
         }
     }
 
@@ -911,6 +1003,46 @@ unittest
             buffer.clear();
         }();
     }));
+}
+
+unittest
+{
+    // Regression for issue #31: aggregate embedding must not break the slot
+    // alignment promised by StaticRingBuffer, even when the compiler does not
+    // propagate an over-aligned field through the containing aggregate.
+    align(64) struct OverAligned64
+    {
+        ulong value;
+    }
+
+    alias Buffer = StaticRingBuffer!(OverAligned64, 3);
+
+    struct Holder
+    {
+        ubyte prefix;
+        Buffer buffer;
+    }
+
+    Holder holder;
+
+    foreach (i; 0 .. Buffer.capacity)
+    {
+        OverAligned64 value;
+        value.value = i + 1;
+        assert(holder.buffer.tryPushBack(value));
+        const address = cast(size_t) &holder.buffer[i];
+        assert(address % OverAligned64.alignof == 0);
+    }
+
+    Holder[3] holders;
+    foreach (ref current; holders)
+    {
+        OverAligned64 value;
+        value.value = 17;
+        assert(current.buffer.tryPushBack(value));
+        const address = cast(size_t) &current.buffer[0];
+        assert(address % OverAligned64.alignof == 0);
+    }
 }
 
 unittest

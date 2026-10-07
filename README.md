@@ -2,7 +2,7 @@
 
 High-performance generic container primitives for D.
 
-Current release: `v0.1.0`.
+Current release: `v0.1.1`.
 
 The 0.x line is the API-stabilization period. Minor 0.x releases may make
 breaking public-API changes when required by evidence; patch releases should
@@ -13,7 +13,7 @@ not intentionally break source compatibility.
 Install the published package through the DUB registry:
 
 ```bash
-dub add containers-d@0.1.0
+dub add containers-d@0.1.1
 ```
 
 The package root is:
@@ -70,6 +70,11 @@ unchanged.
 The buffer itself performs no heap allocation for construction or steady-state
 push/pop operations. Operations performed by the element type `T` may still
 allocate.
+
+Live inline slots preserve `T.alignof`, including over-aligned element types when
+the buffer is embedded in another aggregate. On compiler/target combinations
+that do not propagate such aggregate alignment reliably, the implementation
+uses inline alignment slack rather than heap storage.
 
 For zero-copy bulk access, the current logical FIFO sequence is available as at
 most two borrowed contiguous slices:
