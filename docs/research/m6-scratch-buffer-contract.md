@@ -156,14 +156,43 @@ Performance:
 - measure DMD 2.111 and LDC 1.41 retired instructions;
 - investigate any material abstraction overhead before expanding the API.
 
-## Stage 2 questions
+## Stage 2 — empty-only capacity establishment
 
-Only after Stage 1:
+Stage 1 qualified the repeated-use path at zero retired-instruction overhead
+against the manual scalar baseline on DMD 2.111, with equal optimized LDC
+wrapper code.
 
-1. Is empty-only capacity re-establishment sufficient for real workloads?
+Stage 2 therefore adds only:
+
+```d
+bool tryReserve(size_t minCapacity);
+```
+
+Contract:
+
+- if current capacity already satisfies minCapacity, return true and do
+  nothing, even when elements are live;
+- if growth is required while elements are live, return false and do nothing;
+- if growth is required while empty, replace the backing allocation exactly
+  with minCapacity slots and return true;
+- never move/copy a live T;
+- never embed geometric growth policy;
+- successful growth invalidates prior borrows;
+- allocation failure follows the existing runtime-storage OOM contract;
+- callable from @safe @nogc nothrow code.
+
+This shape lets an orchestrating caller establish or increase a reusable
+high-water allocation between work phases while preserving a no-allocation
+steady state.
+
+## Remaining M6 questions
+
+1. Is empty-only capacity re-establishment sufficient for representative real
+   workloads?
 2. Is a separate UniqueBuffer owner useful under both RingBuffer and
    ScratchBuffer, or would extraction add abstraction cost/contract surface?
-3. Do any consumers require preserving live contents while capacity grows?
+3. Do any consumers actually require preserving live contents while capacity
+   grows?
 4. Is high-water accounting useful public behavior or research telemetry only?
 5. Should a production type expose vector vocabulary or scratch-specific
    reset/reuse vocabulary?
