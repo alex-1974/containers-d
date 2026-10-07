@@ -41,7 +41,43 @@ private void exerciseReuse() @safe @nogc nothrow
     assert(scratch.capacity == initialCapacity * 2);
 }
 
+private void exerciseReserve()
+    @safe @nogc nothrow
+{
+    ResearchScratchBuffer!int scratch;
+
+    assert(scratch.tryReserve(4));
+    assert(scratch.capacity == 4);
+
+    auto emptyBefore = scratch[];
+    const beforePtr = emptyBefore.ptr;
+
+    // Already-sufficient capacity is a no-op.
+    assert(scratch.tryReserve(2));
+    assert(scratch.capacity == 4);
+    assert(scratch[].ptr is beforePtr);
+
+    assert(scratch.tryPushBack(11));
+    assert(scratch.tryPushBack(12));
+
+    // Required growth while live is rejected without mutation.
+    assert(!scratch.tryReserve(8));
+    assert(scratch.capacity == 4);
+    assert(scratch[] == [11, 12]);
+
+    scratch.reset();
+
+    // Growth is admitted only after the live prefix is empty.
+    assert(scratch.tryReserve(8));
+    assert(scratch.capacity == 8);
+    assert(scratch.empty);
+
+    assert(scratch.tryPushBack(21));
+    assert(scratch[] == [21]);
+}
+
 void main()
 {
     exerciseReuse();
+    exerciseReserve();
 }
