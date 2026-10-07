@@ -18,6 +18,13 @@ import core.atomic :
     atomicStore,
     cas;
 
+version (ContainersWorkStealingTestHooks)
+{
+    private shared bool _testPauseBatchAfterMark;
+    private shared bool _testBatchMarked;
+    private shared ulong _testOwnerBusyRetries;
+}
+
 /**
  * Result of an owner pop or thief steal attempt.
  *
@@ -117,7 +124,8 @@ private void workStealingSeqCstBarrier(
  *   Copy construction, move construction and assignment are disabled.
  *   Establish the deque at its final address before concurrent use.
  */
-struct WorkStealingDeque(T, size_t Capacity){
+struct WorkStealingDeque(T, size_t Capacity)
+{
     static assert(size_t.sizeof == ulong.sizeof,
         "WorkStealingDeque requires a 64-bit target");
     static assert(isWorkStealingTransportElement!T,
@@ -277,6 +285,13 @@ public:
                     _bottom,
                     oldBottom);
 
+                version (ContainersWorkStealingTestHooks)
+                {
+                    atomicFetchAdd!(MemoryOrder.raw)(
+                        _testOwnerBusyRetries,
+                        1UL);
+                }
+
                 continue;
             }
 
@@ -424,6 +439,22 @@ public:
             return 0;
         }
 
+        version (ContainersWorkStealingTestHooks)
+        {
+            if (atomicLoad!(MemoryOrder.acq)(
+                    _testPauseBatchAfterMark))
+            {
+                atomicStore!(MemoryOrder.rel)(
+                    _testBatchMarked,
+                    true);
+
+                while (atomicLoad!(MemoryOrder.acq)(
+                        _testPauseBatchAfterMark))
+                {
+                }
+            }
+        }
+
         workStealingSeqCstBarrier(
             &_fenceWord);
 
@@ -477,6 +508,45 @@ public:
                 false));
 
         return take;
+    }
+
+    version (ContainersWorkStealingTestHooks)
+    {
+        void testEnableBatchPause()
+            @safe @nogc nothrow
+        {
+            atomicStore!(MemoryOrder.raw)(
+                _testBatchMarked,
+                false);
+            atomicStore!(MemoryOrder.raw)(
+                _testOwnerBusyRetries,
+                0UL);
+            atomicStore!(MemoryOrder.rel)(
+                _testPauseBatchAfterMark,
+                true);
+        }
+
+        void testReleaseBatchPause()
+            @safe @nogc nothrow
+        {
+            atomicStore!(MemoryOrder.rel)(
+                _testPauseBatchAfterMark,
+                false);
+        }
+
+        bool testBatchMarkedSnapshot() const
+            @safe @nogc nothrow
+        {
+            return atomicLoad!(MemoryOrder.acq)(
+                _testBatchMarked);
+        }
+
+        ulong testOwnerBusyRetriesSnapshot() const
+            @safe @nogc nothrow
+        {
+            return atomicLoad!(MemoryOrder.acq)(
+                _testOwnerBusyRetries);
+        }
     }
 
     version (unittest)
