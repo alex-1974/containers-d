@@ -5,9 +5,12 @@
  */
 module containers.runtime_ring_buffer;
 
+import containers.internal.element_lifetime :
+    EndElementLifetimeOps,
+    PlacementMoveOps;
 import containers.internal.runtime_storage : RuntimeStorageOwner;
 import core.lifetime : emplace, forward;
-import std.traits : hasElaborateDestructor, hasIndirections, isNested, Unqual;
+import std.traits : hasIndirections, isNested, Unqual;
 
 /**
  * Owning bounded FIFO ring buffer with runtime-selected capacity.
@@ -27,6 +30,9 @@ struct RingBuffer(T)
         "RingBuffer v0.1 does not support nested/local struct element types with hidden context/indirections");
 
 private:
+    mixin PlacementMoveOps!T;
+    mixin EndElementLifetimeOps!T;
+
     RuntimeStorageOwner!T _storage;
     size_t _head;
     size_t _length;
@@ -61,37 +67,6 @@ private:
         return _storage.slotSlice(physicalStart, count);
     }
 
-    enum bool safeLanguageMove = __traits(compiles, {
-        void probe(ref T source) @safe
-        {
-            T target = __rvalue(source);
-        }
-    });
-
-    static if (__traits(hasMoveConstructor, T))
-    {
-        static if (safeLanguageMove)
-        {
-            T* placementMoveConstruct(
-                T* target,
-                ref T source) @trusted
-            {
-                // target is aligned unused storage owned by this RingBuffer,
-                // and T's language move construction is independently @safe.
-                return new (*target) T(__rvalue(source));
-            }
-        }
-        else
-        {
-            T* placementMoveConstruct(
-                T* target,
-                ref T source) @system
-            {
-                return new (*target) T(__rvalue(source));
-            }
-        }
-    }
-
     size_t physicalIndex(size_t logicalIndex) const @safe @nogc nothrow
     {
         assert(logicalIndex < capacity);
@@ -110,9 +85,7 @@ private:
 
     void endSlotLifetime(size_t physicalIndex)
     {
-        static if (hasElaborateDestructor!T)
-            destroy!false(*_storage.slotPointer(physicalIndex));
-
+        endElementLifetime(_storage.slotPointer(physicalIndex));
         _storage.clearVacatedSlot(physicalIndex);
     }
 
