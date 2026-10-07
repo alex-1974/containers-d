@@ -65,6 +65,90 @@ private struct AlignedStorageBackend
 }
 
 /**
+ * Injects runtime-storage slot access into a consuming aggregate that owns a
+ * `RuntimeStorageOwner!T _storage` field.
+ *
+ * This is the runtime counterpart to InlineRawStorageOps. DMD 2.111 can leave
+ * imported RuntimeStorageOwner slot-access helpers out-of-line in a hot
+ * consumer path even when the arithmetic itself is trivial. The typed mixin
+ * generates only pointer/sanitation operations in the consuming aggregate;
+ * allocation, GC registration and unique ownership remain in
+ * RuntimeStorageOwner.
+ *
+ * The mixin injects no state and is package-internal.
+ */
+package(containers) mixin template RuntimeStorageAccessOps(
+    T,
+    bool HasIndirections = hasIndirections!T)
+{
+package(containers):
+    pragma(inline, true)
+    T* runtimeSlotPointer(size_t physicalIndex)
+        return scope @trusted @nogc nothrow
+    {
+        assert(physicalIndex < _storage._capacity);
+
+        return cast(T*) (
+            _storage._bytes.ptr +
+            physicalIndex * T.sizeof);
+    }
+
+    pragma(inline, true)
+    const(T)* runtimeSlotPointer(size_t physicalIndex)
+        const return scope @trusted @nogc nothrow
+    {
+        assert(physicalIndex < _storage._capacity);
+
+        return cast(const(T)*) (
+            _storage._bytes.ptr +
+            physicalIndex * T.sizeof);
+    }
+
+    pragma(inline, true)
+    T[] runtimeSlotSlice(
+        size_t physicalStart,
+        size_t count)
+        return scope @trusted @nogc nothrow
+    {
+        if (count == 0)
+            return null;
+
+        assert(physicalStart < _storage._capacity);
+        assert(count <= _storage._capacity - physicalStart);
+
+        return runtimeSlotPointer(physicalStart)[0 .. count];
+    }
+
+    pragma(inline, true)
+    const(T)[] runtimeSlotSlice(
+        size_t physicalStart,
+        size_t count)
+        const return scope @trusted @nogc nothrow
+    {
+        if (count == 0)
+            return null;
+
+        assert(physicalStart < _storage._capacity);
+        assert(count <= _storage._capacity - physicalStart);
+
+        return runtimeSlotPointer(physicalStart)[0 .. count];
+    }
+
+    pragma(inline, true)
+    void runtimeClearVacatedSlot(size_t physicalIndex)
+        @safe @nogc nothrow
+    {
+        assert(physicalIndex < _storage._capacity);
+
+        static if (HasIndirections)
+        {
+            const begin = physicalIndex * T.sizeof;
+            _storage._bytes[begin .. begin + T.sizeof] = 0;
+        }
+    }
+}
+
+/**
  * Move-only owner for one aligned runtime storage block.
  *
  * The owner manages storage bytes only. It does not know which slots currently
