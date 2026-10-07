@@ -111,9 +111,9 @@ Tracking: issue #29. Promotion: PR #43.
 - zero-overhead qualification on DMD 2.111 and LDC 1.41;
 - no public customization API and no change to released ring semantics.
 
-### M4.3 — StaticVector proof and production promotion — current
+### M4.3 — StaticVector proof and production promotion — complete
 
-Tracking: issues #25 and #34. Research proof: PR #33.
+Tracking: issues #25 and #34. Research proof: PR #33. Promotion: PR #44.
 
 Qualified research evidence:
 
@@ -130,16 +130,26 @@ Production promotion admits only the stable `StaticVector!(T, Capacity)` type.
 The research-only scalar composition mixin remains outside the compatibility
 surface.
 
-### M4.4 — Ring family factoring proof
+### M4.4 — Ring family factoring — research complete, promotion current
 
-Without changing the public ring APIs:
+Tracking: issue #45. Research proof: PR #46.
 
-- test shared ring state/algorithm machinery beneath StaticRingBuffer/RingBuffer;
-- retain their distinct ownership/copy/move contracts;
-- compare generated code and representative workloads with the current
-  implementation;
-- keep the current implementation wherever factoring is not demonstrably
-  zero-cost or otherwise justified.
+Qualified evidence:
+
+- common head/length sequencing isolated without sharing storage or ownership;
+- static power-of-two, static non-power-of-two and runtime sequencing are
+  instruction-identical before/after factoring on DMD 2.111 and LDC 1.41;
+- actual StaticRingBuffer normal and over-aligned production workloads are
+  instruction-identical to develop;
+- actual RingBuffer index, push/pop, segment and mixed workloads are
+  instruction-identical at capacities 63 and 64 on both baseline compilers;
+- layout, Fast CI, GC, DIP1000, lifetime and existing runtime performance gates
+  remain qualified.
+
+Production promotion is deliberately limited to the package-internal
+`RingSequenceOps` typed mixin. StaticRingBuffer and RingBuffer retain their
+separate storage, ownership, allocation, copy/move and public semantic
+contracts.
 
 ### M4.5 — Real-consumer adaptation proofs
 
