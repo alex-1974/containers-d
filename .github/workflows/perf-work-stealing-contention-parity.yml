@@ -100,10 +100,10 @@ jobs:
 
           : > "$RESULTS"
 
-          "$BIN" 1 0 262144 3 9 | tee -a "$RESULTS"
-          "$BIN" 1 1 262144 3 9 | tee -a "$RESULTS"
-          "$BIN" 3 0 262144 3 9 | tee -a "$RESULTS"
-          "$BIN" 3 1 262144 3 9 | tee -a "$RESULTS"
+          "$BIN" 1 0 262144 3 10 | tee -a "$RESULTS"
+          "$BIN" 1 1 262144 3 10 | tee -a "$RESULTS"
+          "$BIN" 3 0 262144 3 10 | tee -a "$RESULTS"
+          "$BIN" 3 1 262144 3 10 | tee -a "$RESULTS"
 
           {
             echo "### ${{ matrix.compiler }} — paired P08e contention parity"
