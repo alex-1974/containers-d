@@ -1,0 +1,149 @@
+name: M7 BlockingQueue Storage Parity
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - source/containers/research/blocking_queue.d
+      - benchmarks/blocking_queue_storage_parity_probe.d
+      - .github/workflows/blocking-queue-storage-parity.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  retired-instructions:
+    name: BlockingQueue storage Ir / ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - dmd-2.111.0
+          - ldc-1.41.0
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ${{ matrix.compiler }}
+
+      - name: Install Callgrind
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y valgrind
+
+      - name: Build storage parity probe
+        shell: bash
+        run: |
+          mkdir -p build/m7-blocking-storage
+
+          case "${{ matrix.compiler }}" in
+            dmd-*)
+              "$DC" \
+                -O \
+                -release \
+                -inline \
+                -boundscheck=off \
+                -Isource \
+                -of=build/m7-blocking-storage/probe \
+                benchmarks/blocking_queue_storage_parity_probe.d \
+                source/containers/research/blocking_queue.d \
+                source/containers/runtime_ring_buffer.d \
+                source/containers/internal/ring_sequence.d \
+                source/containers/internal/runtime_storage.d \
+                source/containers/internal/element_lifetime.d
+              ;;
+            ldc-*)
+              "$DC" \
+                -O3 \
+                -release \
+                -boundscheck=off \
+                -Isource \
+                -of=build/m7-blocking-storage/probe \
+                benchmarks/blocking_queue_storage_parity_probe.d \
+                source/containers/research/blocking_queue.d \
+                source/containers/runtime_ring_buffer.d \
+                source/containers/internal/ring_sequence.d \
+                source/containers/internal/runtime_storage.d \
+                source/containers/internal/element_lifetime.d
+              ;;
+          esac
+
+      - name: Verify semantic parity
+        shell: bash
+        run: |
+          BIN=build/m7-blocking-storage/probe
+          ROUNDS=2048
+
+          candidate=$("$BIN" candidate "$ROUNDS" | awk '{print $2}')
+          manual=$("$BIN" manual "$ROUNDS" | awk '{print $2}')
+
+          echo "candidate=$candidate manual=$manual"
+          test "$candidate" = "$manual"
+
+      - name: Measure storage composition
+        shell: bash
+        run: |
+          BIN=build/m7-blocking-storage/probe
+          ROUNDS=16384
+          RESULTS=build/m7-blocking-storage/results.tsv
+
+          printf 'compiler\tvariant\trounds\tIr\tchecksum\n' > "$RESULTS"
+
+          measure() {
+            variant="$1"
+            symbol="$2"
+            out="build/m7-blocking-storage/callgrind-${variant}.out"
+
+            checksum=$("$BIN" "$variant" "$ROUNDS" | awk '{print $2}')
+
+            valgrind \
+              --tool=callgrind \
+              --collect-atstart=no \
+              --toggle-collect="$symbol" \
+              --callgrind-out-file="$out" \
+              "$BIN" "$variant" "$ROUNDS" \
+              >/dev/null 2>&1
+
+            ir=$(awk '/^summary:/ {print $2}' "$out")
+
+            printf '%s\t%s\t%s\t%s\t%s\n' \
+              "${{ matrix.compiler }}" "$variant" "$ROUNDS" "$ir" "$checksum" \
+              >> "$RESULTS"
+          }
+
+          measure candidate bench_candidate
+          measure manual bench_manual
+
+          cat "$RESULTS"
+
+          candidate=$(awk -F '\t' '$2 == "candidate" {print $4}' "$RESULTS")
+          manual=$(awk -F '\t' '$2 == "manual" {print $4}' "$RESULTS")
+
+          awk -v c="$candidate" -v m="$manual" 'BEGIN {
+            delta = c - m;
+            pct = m == 0 ? 0 : delta * 100.0 / m;
+            printf "manual Ir=%d\ncandidate Ir=%d\ndelta=%+d (%+.6f%%)\n", m, c, delta, pct;
+
+            # Research guard only. Any material delta is investigated before
+            # production; fail here only on an obviously off-class result.
+            if (pct > 15.0)
+              exit 1;
+          }'
+
+      - name: Upload evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: m7-blocking-storage-${{ matrix.compiler }}
+          path: |
+            build/m7-blocking-storage/results.tsv
+            build/m7-blocking-storage/callgrind-*.out
+          if-no-files-found: error
