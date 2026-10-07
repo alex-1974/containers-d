@@ -110,6 +110,96 @@ extern(C) ulong bench_manual(
     return checksum;
 }
 
+pragma(inline, false)
+extern(C) ulong bench_candidate_push_only(
+    ref RingBuffer!int storage,
+    scope const(int)[] input,
+    size_t rounds)
+{
+    ulong checksum = 0x9E3779B97F4A7C15UL;
+
+    foreach (round; 0 .. rounds)
+    {
+        storage.clear();
+
+        foreach (i, seed; input)
+        {
+            const value = seed ^ cast(int)(round + i);
+            const accepted = storage.tryPushBack(value);
+            checksum = mix(checksum, accepted ? value : -1);
+        }
+    }
+
+    return checksum ^ storage.length;
+}
+
+pragma(inline, false)
+extern(C) ulong bench_manual_push_only(
+    ref ManualRing storage,
+    scope const(int)[] input,
+    size_t rounds)
+{
+    ulong checksum = 0x9E3779B97F4A7C15UL;
+
+    foreach (round; 0 .. rounds)
+    {
+        storage.head = 0;
+        storage.length = 0;
+
+        foreach (i, seed; input)
+        {
+            const value = seed ^ cast(int)(round + i);
+            const accepted = storage.tryPushBack(value);
+            checksum = mix(checksum, accepted ? value : -1);
+        }
+    }
+
+    return checksum ^ storage.length;
+}
+
+pragma(inline, false)
+extern(C) ulong bench_candidate_pop_only(
+    ref RingBuffer!int storage,
+    scope const(int)[] input,
+    size_t rounds)
+{
+    ulong checksum = 0xD1B54A32D192ED03UL;
+
+    foreach (round; 0 .. rounds)
+    {
+        foreach (seed; input)
+            assert(storage.tryPushBack(seed ^ cast(int)round));
+
+        foreach (_; 0 .. input.length)
+        {
+            checksum = mix(checksum, storage.front);
+            storage.popFront();
+        }
+    }
+
+    return checksum;
+}
+
+pragma(inline, false)
+extern(C) ulong bench_manual_pop_only(
+    ref ManualRing storage,
+    scope const(int)[] input,
+    size_t rounds)
+{
+    ulong checksum = 0xD1B54A32D192ED03UL;
+
+    foreach (round; 0 .. rounds)
+    {
+        foreach (seed; input)
+            assert(storage.tryPushBack(seed ^ cast(int)round));
+
+        foreach (_; 0 .. input.length)
+            checksum = mix(checksum, storage.popFront());
+    }
+
+    return checksum;
+}
+
 private ulong verifyStepwise(
     scope const(int)[] input,
     size_t rounds)
@@ -187,7 +277,7 @@ void main(string[] args)
     if (args.length != 3)
     {
         stderr.writeln(
-            "usage: blocking-queue-storage-parity <candidate|manual|verify> <rounds>");
+            "usage: blocking-queue-storage-parity <candidate|manual|candidate-push|manual-push|candidate-pop|manual-pop|verify> <rounds>");
         return;
     }
 
@@ -220,6 +310,38 @@ void main(string[] args)
             auto storage = RingBuffer!int(capacity);
             writeln("candidate ",
                 bench_candidate(storage, input[], rounds));
+            break;
+        }
+
+        case "candidate-push":
+        {
+            auto storage = RingBuffer!int(capacity);
+            writeln("candidate-push ",
+                bench_candidate_push_only(storage, input[], rounds));
+            break;
+        }
+
+        case "manual-push":
+        {
+            auto storage = ManualRing(capacity);
+            writeln("manual-push ",
+                bench_manual_push_only(storage, input[], rounds));
+            break;
+        }
+
+        case "candidate-pop":
+        {
+            auto storage = RingBuffer!int(capacity);
+            writeln("candidate-pop ",
+                bench_candidate_pop_only(storage, input[], rounds));
+            break;
+        }
+
+        case "manual-pop":
+        {
+            auto storage = ManualRing(capacity);
+            writeln("manual-pop ",
+                bench_manual_pop_only(storage, input[], rounds));
             break;
         }
 
