@@ -1,0 +1,108 @@
+name: StaticVector Build Cost
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - benchmarks/static_vector_build_cost_baseline.d
+      - benchmarks/static_vector_build_cost_candidate.d
+      - benchmarks/static_vector_build_cost_matched.d
+      - source/containers/static_vector.d
+      - source/containers/internal/static_vector.d
+      - source/containers/internal/inline_storage.d
+      - .github/workflows/static-vector-build-cost.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    name: Build Cost / ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - dmd-2.111.0
+          - ldc-1.41.0
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ${{ matrix.compiler }}
+
+      - name: Measure compile cost and object size
+        shell: bash
+        run: |
+          mkdir -p build/static-vector-build-cost
+          RESULTS=build/static-vector-build-cost/results.tsv
+          printf 'compiler\tvariant\telapsed_s\tmax_rss_kb\tobject_bytes\ttext\tdata\tbss\n' > "$RESULTS"
+
+          compile_one() {
+            variant="$1"
+            source="$2"
+            object="build/static-vector-build-cost/${variant}.o"
+            timing="build/static-vector-build-cost/${variant}.time"
+
+            case "${{ matrix.compiler }}" in
+              dmd-*)
+                /usr/bin/time -f '%e %M' -o "$timing" \
+                  "$DC" -O -release -inline -boundscheck=off -Isource -c \
+                  -of="$object" "$source"
+                ;;
+              ldc-*)
+                /usr/bin/time -f '%e %M' -o "$timing" \
+                  "$DC" -O3 -release -boundscheck=off -Isource -c \
+                  -of="$object" "$source"
+                ;;
+            esac
+
+            read elapsed rss < "$timing"
+            bytes=$(stat -c '%s' "$object")
+            read text_size data_size bss_size _ < <(size "$object" | awk 'NR == 2 {print $1, $2, $3, $4}')
+
+            printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+              "${{ matrix.compiler }}" "$variant" "$elapsed" "$rss" \
+              "$bytes" "$text_size" "$data_size" "$bss_size" >> "$RESULTS"
+          }
+
+          compile_one minimal benchmarks/static_vector_build_cost_baseline.d
+          compile_one matched benchmarks/static_vector_build_cost_matched.d
+          compile_one candidate benchmarks/static_vector_build_cost_candidate.d
+
+          cat "$RESULTS"
+
+          for variant in minimal matched candidate; do
+            nm -S --size-sort --radix=d               "build/static-vector-build-cost/${variant}.o"               > "build/static-vector-build-cost/${variant}.nm.txt"
+
+            objdump -h               "build/static-vector-build-cost/${variant}.o"               > "build/static-vector-build-cost/${variant}.sections.txt"
+          done
+
+          {
+            echo '### ${{ matrix.compiler }} — StaticVector build cost'
+            echo
+            echo '| Variant | Elapsed s | Peak RSS KiB | Object bytes | text | data | bss |'
+            echo '|---|---:|---:|---:|---:|---:|---:|'
+            awk -F '\t' 'NR > 1 {
+              printf "| %s | %s | %s | %s | %s | %s | %s |\n", $2, $3, $4, $5, $6, $7, $8
+            }' "$RESULTS"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload build-cost evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: static-vector-build-cost-${{ matrix.compiler }}
+          path: |
+            build/static-vector-build-cost/results.tsv
+            build/static-vector-build-cost/*.time
+            build/static-vector-build-cost/*.nm.txt
+            build/static-vector-build-cost/*.sections.txt
+            build/static-vector-build-cost/*.o
+          if-no-files-found: error
