@@ -1,0 +1,190 @@
+name: M6 ScratchBuffer Research
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - source/containers/research/scratch_buffer.d
+      - source/containers/internal/runtime_storage.d
+      - source/containers/internal/element_lifetime.d
+      - tests/scratch-buffer-research/**
+      - benchmarks/scratch_buffer_reuse_probe.d
+      - docs/research/m6-scratch-buffer-contract.md
+      - .github/workflows/scratch-buffer-research.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  correctness:
+    name: Scratch correctness / ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - dmd-2.111.0
+          - ldc-1.41.0
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ${{ matrix.compiler }}
+
+      - name: Library tests
+        shell: bash
+        run: dub test --compiler="$DC" --force
+
+      - name: External scratch consumer
+        shell: bash
+        run: |
+          dub run \
+            --root=tests/scratch-buffer-research \
+            --compiler="$DC" \
+            --force
+
+      - name: External scratch consumer with DIP1000
+        shell: bash
+        run: |
+          DFLAGS="-preview=dip1000" \
+            dub run \
+              --root=tests/scratch-buffer-research \
+              --compiler="$DC" \
+              --force
+
+  retired-instructions:
+    name: Scratch reuse Ir / ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - dmd-2.111.0
+          - ldc-1.41.0
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ${{ matrix.compiler }}
+
+      - name: Install Callgrind
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y valgrind
+
+      - name: Build reuse probe
+        shell: bash
+        run: |
+          mkdir -p build/m6-scratch
+
+          case "${{ matrix.compiler }}" in
+            dmd-*)
+              "$DC" \
+                -O \
+                -release \
+                -inline \
+                -boundscheck=off \
+                -Isource \
+                -of=build/m6-scratch/probe \
+                benchmarks/scratch_buffer_reuse_probe.d \
+                source/containers/research/scratch_buffer.d \
+                source/containers/internal/runtime_storage.d \
+                source/containers/internal/element_lifetime.d
+              ;;
+            ldc-*)
+              "$DC" \
+                -O3 \
+                -release \
+                -boundscheck=off \
+                -Isource \
+                -of=build/m6-scratch/probe \
+                benchmarks/scratch_buffer_reuse_probe.d \
+                source/containers/research/scratch_buffer.d \
+                source/containers/internal/runtime_storage.d \
+                source/containers/internal/element_lifetime.d
+              ;;
+          esac
+
+      - name: Verify semantic parity
+        shell: bash
+        run: |
+          BIN=build/m6-scratch/probe
+          ROUNDS=4096
+
+          candidate=$("$BIN" candidate "$ROUNDS" | awk '{print $2}')
+          manual=$("$BIN" manual "$ROUNDS" | awk '{print $2}')
+
+          echo "candidate=$candidate manual=$manual"
+          test "$candidate" = "$manual"
+
+      - name: Measure repeated-use retired instructions
+        shell: bash
+        run: |
+          BIN=build/m6-scratch/probe
+          ROUNDS=65536
+          RESULTS=build/m6-scratch/results.tsv
+
+          printf 'compiler\tvariant\trounds\tIr\tchecksum\n' > "$RESULTS"
+
+          measure() {
+            variant="$1"
+            symbol="$2"
+            out="build/m6-scratch/callgrind-${variant}.out"
+
+            checksum=$("$BIN" "$variant" "$ROUNDS" | awk '{print $2}')
+
+            valgrind \
+              --tool=callgrind \
+              --collect-atstart=no \
+              --toggle-collect="$symbol" \
+              --callgrind-out-file="$out" \
+              "$BIN" "$variant" "$ROUNDS" \
+              >/dev/null 2>&1
+
+            ir=$(awk '/^summary:/ {print $2}' "$out")
+
+            printf '%s\t%s\t%s\t%s\t%s\n' \
+              "${{ matrix.compiler }}" "$variant" "$ROUNDS" "$ir" "$checksum" \
+              >> "$RESULTS"
+          }
+
+          measure candidate bench_candidate
+          measure manual bench_manual
+
+          cat "$RESULTS"
+
+          candidate=$(awk -F '\t' '$2 == "candidate" {print $4}' "$RESULTS")
+          manual=$(awk -F '\t' '$2 == "manual" {print $4}' "$RESULTS")
+
+          awk -v c="$candidate" -v m="$manual" 'BEGIN {
+            delta = c - m;
+            pct = m == 0 ? 0 : delta * 100.0 / m;
+            printf "manual Ir=%d\ncandidate Ir=%d\ndelta=%+d (%+.6f%%)\n", m, c, delta, pct;
+
+            # Stage 1 is exploratory, not an admission gate. Fail only if the
+            # generic abstraction is catastrophically off-class (>20%).
+            if (pct > 20.0)
+              exit 1;
+          }'
+
+      - name: Upload evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: m6-scratch-reuse-${{ matrix.compiler }}
+          path: |
+            build/m6-scratch/results.tsv
+            build/m6-scratch/callgrind-*.out
+          if-no-files-found: error
