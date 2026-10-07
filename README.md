@@ -71,6 +71,11 @@ The buffer itself performs no heap allocation for construction or steady-state
 push/pop operations. Operations performed by the element type `T` may still
 allocate.
 
+Live inline slots preserve `T.alignof`, including over-aligned element types when
+the buffer is embedded in another aggregate. On compiler/target combinations
+that do not propagate such aggregate alignment reliably, the implementation
+uses inline alignment slack rather than heap storage.
+
 For zero-copy bulk access, the current logical FIFO sequence is available as at
 most two borrowed contiguous slices:
 
