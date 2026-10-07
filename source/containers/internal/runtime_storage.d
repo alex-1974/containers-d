@@ -89,7 +89,7 @@ package(containers):
         assert(physicalIndex < _storage._capacity);
 
         return cast(T*) (
-            _storage._bytes.ptr +
+            _storage._ptr +
             physicalIndex * T.sizeof);
     }
 
@@ -100,7 +100,7 @@ package(containers):
         assert(physicalIndex < _storage._capacity);
 
         return cast(const(T)*) (
-            _storage._bytes.ptr +
+            _storage._ptr +
             physicalIndex * T.sizeof);
     }
 
@@ -143,7 +143,9 @@ package(containers):
         static if (HasIndirections)
         {
             const begin = physicalIndex * T.sizeof;
-            _storage._bytes[begin .. begin + T.sizeof] = 0;
+            (() @trusted {
+                _storage._ptr[begin .. begin + T.sizeof] = 0;
+            })();
         }
     }
 }
@@ -164,21 +166,43 @@ package(containers):
     // representation without introducing imported accessor calls. This remains
     // an internal implementation detail; callers outside containers.* cannot
     // observe these fields.
-    ubyte[] _bytes;
+    ubyte* _ptr;
     size_t _capacity;
 
 private:
+    size_t ownedByteLength() const @safe @nogc nothrow
+    {
+        // Capacity was overflow-checked before ownership was established.
+        return _capacity * T.sizeof;
+    }
+
+    ubyte[] ownedBytes() scope return @trusted @nogc nothrow
+    {
+        if (_ptr is null)
+            return null;
+
+        return _ptr[0 .. ownedByteLength()];
+    }
+
+    const(ubyte)[] ownedBytes() const scope return @trusted @nogc nothrow
+    {
+        if (_ptr is null)
+            return null;
+
+        return _ptr[0 .. ownedByteLength()];
+    }
 
     void registerRangeIfNeeded() scope @safe @nogc nothrow
     {
         static if (hasIndirections!T)
         {
-            if (_bytes.ptr !is null)
+            if (_ptr !is null)
             {
                 // Registered external memory is scanned conservatively. Start
                 // with no stale pointer representations in unused slots.
-                _bytes[] = 0;
-                addGcRange(_bytes);
+                auto bytes = ownedBytes();
+                bytes[] = 0;
+                addGcRange(bytes);
             }
         }
     }
@@ -187,14 +211,14 @@ private:
     {
         static if (hasIndirections!T)
         {
-            if (_bytes.ptr !is null)
-                removeGcRange(_bytes);
+            if (_ptr !is null)
+                removeGcRange(ownedBytes());
         }
     }
 
     void releaseStorage() scope @safe @nogc nothrow
     {
-        if (_bytes.ptr is null)
+        if (_ptr is null)
             return;
 
         unregisterRangeIfNeeded();
@@ -202,9 +226,9 @@ private:
         // Backend release may be @system because aliases could dangle. The
         // owner invariant guarantees unique storage ownership; all borrowed
         // views must already be invalid by the time the owner releases.
-        Backend.release(_bytes);
+        Backend.release(ownedBytes());
 
-        _bytes = null;
+        _ptr = null;
         _capacity = 0;
     }
 
@@ -241,7 +265,7 @@ public:
         if (block.ptr is null)
             onOutOfMemoryError();
 
-        _bytes = block;
+        _ptr = block.ptr;
         _capacity = capacity;
         registerRangeIfNeeded();
     }
@@ -259,10 +283,10 @@ public:
     {
         assert(emptyStorage);
 
-        _bytes = rhs._bytes;
+        _ptr = rhs._ptr;
         _capacity = rhs._capacity;
 
-        rhs._bytes = null;
+        rhs._ptr = null;
         rhs._capacity = 0;
     }
 
@@ -278,10 +302,10 @@ public:
      */
     this(return scope typeof(this) rhs) @safe @nogc nothrow
     {
-        _bytes = rhs._bytes;
+        _ptr = rhs._ptr;
         _capacity = rhs._capacity;
 
-        rhs._bytes = null;
+        rhs._ptr = null;
         rhs._capacity = 0;
     }
 
@@ -291,7 +315,7 @@ public:
         assert(physicalIndex < _capacity);
 
         return (() @trusted =>
-            cast(T*) (_bytes.ptr + physicalIndex * T.sizeof))();
+            cast(T*) (_ptr + physicalIndex * T.sizeof))();
     }
 
     package(containers) const(T)* slotPointer(
@@ -300,7 +324,7 @@ public:
         assert(physicalIndex < _capacity);
 
         return (() @trusted =>
-            cast(const(T)*) (_bytes.ptr + physicalIndex * T.sizeof))();
+            cast(const(T)*) (_ptr + physicalIndex * T.sizeof))();
     }
 
 
@@ -349,13 +373,13 @@ public:
     /// Whether this owner holds no backing allocation.
     bool emptyStorage() const @safe @nogc nothrow
     {
-        return _bytes.ptr is null;
+        return _ptr is null;
     }
 
     /// Byte size of the owned raw block.
     size_t byteLength() const @safe @nogc nothrow
     {
-        return _bytes.length;
+        return ownedByteLength();
     }
 
     /**
@@ -371,7 +395,8 @@ public:
         static if (hasIndirections!T)
         {
             const begin = physicalIndex * T.sizeof;
-            _bytes[begin .. begin + T.sizeof] = 0;
+            auto bytes = ownedBytes();
+            bytes[begin .. begin + T.sizeof] = 0;
         }
     }
 }
@@ -414,6 +439,13 @@ version (unittest)
     {
         align(64) ubyte value;
     }
+}
+
+unittest
+{
+    // Compact owner representation is exactly pointer + capacity.
+    static assert(RuntimeStorageOwner!int.sizeof ==
+        (void*).sizeof + size_t.sizeof);
 }
 
 unittest
@@ -505,9 +537,9 @@ unittest
 
     assert(owner.capacity == 3);
     assert(owner.byteLength == 3 * OverAligned.sizeof);
-    assert(owner._bytes.ptr !is null);
-    assert((cast(size_t) owner._bytes.ptr) % OverAligned.alignof == 0);
-    assert((cast(size_t) owner._bytes.ptr)
+    assert(owner._ptr !is null);
+    assert((cast(size_t) owner._ptr) % OverAligned.alignof == 0);
+    assert((cast(size_t) owner._ptr)
         % AlignedMallocator.alignment == 0);
 }
 
@@ -519,16 +551,18 @@ unittest
 
     auto owner = RuntimeStorageOwner!WithIndirection(2);
 
-    foreach (value; owner._bytes)
+    auto bytes = owner.ownedBytes();
+
+    foreach (value; bytes)
         assert(value == 0);
 
-    owner._bytes[] = 0xA5;
+    bytes[] = 0xA5;
     owner.clearVacatedSlot(1);
 
-    foreach (value; owner._bytes[0 .. WithIndirection.sizeof])
+    foreach (value; bytes[0 .. WithIndirection.sizeof])
         assert(value == 0xA5);
 
-    foreach (value; owner._bytes[WithIndirection.sizeof .. $])
+    foreach (value; bytes[WithIndirection.sizeof .. $])
         assert(value == 0);
 }
 
