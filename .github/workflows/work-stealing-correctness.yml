@@ -6,7 +6,10 @@ on:
       - develop
     paths:
       - source/containers/research/work_stealing_deque.d
+      - source/containers/work_stealing_deque.d
+      - source/containers/package.d
       - tests/work-stealing-correctness/**
+      - tests/work-stealing-consumer/**
       - .github/workflows/work-stealing-correctness.yml
   workflow_dispatch:
 
@@ -56,6 +59,23 @@ jobs:
           DFLAGS="-preview=dip1000" \
             dub run \
               --root=tests/work-stealing-correctness \
+              --compiler="$DC" \
+              --force
+
+      - name: External candidate consumer
+        shell: bash
+        run: |
+          dub run \
+            --root=tests/work-stealing-consumer \
+            --compiler="$DC" \
+            --force
+
+      - name: External candidate consumer with DIP1000
+        shell: bash
+        run: |
+          DFLAGS="-preview=dip1000" \
+            dub run \
+              --root=tests/work-stealing-consumer \
               --compiler="$DC" \
               --force
 
