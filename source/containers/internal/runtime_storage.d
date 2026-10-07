@@ -42,6 +42,12 @@ private void removeGcRange(scope ubyte[] bytes) @trusted @nogc nothrow
     GC.removeRange(bytes.ptr);
 }
 
+private ubyte* storagePointer(scope ubyte[] block)
+    @trusted @nogc nothrow
+{
+    return block.ptr;
+}
+
 private struct AlignedStorageBackend
 {
     static ubyte[] acquire(
@@ -265,7 +271,7 @@ public:
         if (block.ptr is null)
             onOutOfMemoryError();
 
-        _ptr = block.ptr;
+        _ptr = storagePointer(block);
         _capacity = capacity;
         registerRangeIfNeeded();
     }
