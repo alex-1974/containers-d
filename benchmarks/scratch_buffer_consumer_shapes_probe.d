@@ -275,6 +275,9 @@ extern(C) ulong bench_manual_osm_raster(
             2048 +
             (cast(size_t)seed[round & (seed.length - 1)] & 1023);
 
+        if (live > highWater)
+            highWater = live;
+
         foreach (i; 0 .. live)
         {
             const value =
@@ -284,9 +287,6 @@ extern(C) ulong bench_manual_osm_raster(
 
             assert(scratch.tryPushBack(value));
         }
-
-        if (scratch.length > highWater)
-            highWater = scratch.length;
 
         checksum = mix(checksum, processBytes(scratch.live()));
     }
