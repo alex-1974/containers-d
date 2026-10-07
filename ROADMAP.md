@@ -222,57 +222,50 @@ repository; downstream adoption is a separate concurrency-d project decision.
 
 No public size/empty/full snapshot is admitted in the first API.
 
-## M6 — Reusable contiguous scratch storage — current
+## M6 — Reusable contiguous scratch storage — production promotion current
 
-Tracking: issue #27.
+Research tracking: issue #27. Research evidence: PR #58.  
+Production tracking: issue #59.
 
-M6 starts with a deliberately narrow question: whether a generic
-`ScratchBuffer!T` is justified by repeated real-consumer requirements.
+Qualified research result:
 
-Initial semantic target:
+- one uniquely owned contiguous typed backing allocation;
+- inert zero-capacity `.init`;
+- runtime capacity and exact live prefix;
+- borrowed live slice;
+- reset retains capacity and performs no backing reallocation;
+- trivial pointer-free reset specializes to O(1);
+- whole-owner move transfers storage without relocating live elements;
+- empty-only `tryReserve` can increase capacity between work phases;
+- reserve never copies/moves live T and embeds no geometric growth policy;
+- alignment and GC-visible external-storage behavior reuse the qualified runtime
+  ownership machinery;
+- package-internal `RuntimeStorageAccessOps` restores exact DMD hot-path parity
+  without exposing storage policy;
+- retained-capacity DMD 2.111 reuse path is instruction-identical to a direct
+  manual preallocated-array + logical-length baseline;
+- LDC 1.41 optimized code is equal;
+- DCanvas-like, geometry-like and OSM/raster-like profiles remain in the same
+  performance class as manual equivalents.
 
-- one owned contiguous typed allocation;
-- capacity retained across reset/reuse cycles;
-- explicit logical/initialized prefix;
-- borrowed slice access to the live prefix;
-- controlled capacity establishment/growth outside the steady-state hot path;
-- reset without backing reallocation;
-- `@nogc` steady-state operations once sufficient capacity exists;
-- thread-confined ownership in the first family;
-- explicit high-water/capacity accounting where it serves the contract.
+Architecture decision:
 
-M6 explicitly does **not** assume that these other concepts are the same type:
+- promote `ScratchBuffer!T` as a concrete public family;
+- do not promote public UniqueBuffer now (#26 closed not planned);
+- keep Arena, BufferPool and live-content growth separate/deferred;
+- keep mathematical/caller-workspace algorithm APIs slice-based;
+- no consumer repository migration is part of this promotion.
 
-- `UniqueBuffer` / generic move-only ownership foundation (#26);
-- heterogeneous linear Arena;
-- cross-thread BufferPool;
-- object pools;
-- persistent result ownership;
-- consumer-specific retained-resource provenance.
-
-Research order:
-
-1. derive the minimal ScratchBuffer contract and invalidation/reset semantics;
-2. compare direct storage ownership against a possible private/narrow
-   UniqueBuffer foundation;
-3. qualify DMD/LDC correctness, allocation behavior, alignment, GC visibility
-   and steady-state codegen;
-4. model representative containers-d-side workloads corresponding to DCanvas,
-   geometry caller-workspace orchestration and osm/raster-style reusable
-   buffers;
-5. decide whether ScratchBuffer deserves production promotion;
-6. only then decide whether Arena, BufferPool or UniqueBuffer need separate
-   milestones.
-
-Consumer repositories are evidence sources only in this milestone; no
-cross-repository migration is performed.
+Production promotion is clean from current develop and carries only the public
+family, required internal factoring, tests/docs and permanent qualification
+gates.
 
 ## Later candidates
 
-- UniqueBuffer / owned contiguous storage if M6 proves a reusable common
-  ownership foundation;
 - Arena / BufferPool as separate families where consumer evidence justifies
   them;
+- public UniqueBuffer only if future consumers require direct transferable
+  contiguous ownership as an observable contract;
 - synchronized bounded queues (#28);
 - other explicitly concurrent SPSC/MPSC/MPMC families.
 
