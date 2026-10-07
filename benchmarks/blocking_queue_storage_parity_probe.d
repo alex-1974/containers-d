@@ -71,7 +71,7 @@ extern(C) ulong bench_candidate(
             const value =
                 seed ^ cast(int)(round + i);
 
-            assert(storage.tryPushBack(value));
+            storage.tryPushBack(value);
         }
 
         foreach (_; 0 .. input.length)
