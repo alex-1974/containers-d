@@ -1,0 +1,165 @@
+name: M4.4 Static Ring Integration Probe
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - source/containers/internal/ring_sequence.d
+      - source/containers/ring_buffer.d
+      - benchmarks/static_ring_overalignment_perf_probe.d
+      - .github/workflows/perf-m4-4-static-ring-integration.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  instruction-counts:
+    name: Static ring integration Ir / ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - dmd-2.111.0
+          - ldc-1.41.0
+
+    steps:
+      - name: Check out candidate
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ${{ matrix.compiler }}
+
+      - name: Install Callgrind
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y valgrind
+
+      - name: Build current and develop probes
+        shell: bash
+        run: |
+          mkdir -p build/m4-4-static-ring
+          git fetch origin develop
+          git worktree add --detach build/m4-4-static-ring/develop origin/develop
+
+          build_probe() {
+            root="$1"
+            output="$2"
+
+            case "${{ matrix.compiler }}" in
+              dmd-*)
+                "$DC" \
+                  -O \
+                  -release \
+                  -inline \
+                  -boundscheck=off \
+                  -I"$root/source" \
+                  -of="$output" \
+                  benchmarks/static_ring_overalignment_perf_probe.d \
+                  "$root/source/containers/package.d" \
+                  "$root/source/containers/ring_buffer.d"
+                ;;
+              ldc-*)
+                "$DC" \
+                  -O3 \
+                  -release \
+                  -boundscheck=off \
+                  -I"$root/source" \
+                  -of="$output" \
+                  benchmarks/static_ring_overalignment_perf_probe.d \
+                  "$root/source/containers/package.d" \
+                  "$root/source/containers/ring_buffer.d"
+                ;;
+            esac
+          }
+
+          build_probe "." build/m4-4-static-ring/candidate
+          build_probe build/m4-4-static-ring/develop build/m4-4-static-ring/baseline
+
+      - name: Verify semantic and layout equivalence
+        shell: bash
+        run: |
+          CANDIDATE=build/m4-4-static-ring/candidate
+          BASELINE=build/m4-4-static-ring/baseline
+          ROUNDS=4096
+
+          for variant in model normal over
+          do
+            candidate=$("$CANDIDATE" "$variant" "$ROUNDS" | awk '{print $2}')
+            baseline=$("$BASELINE" "$variant" "$ROUNDS" | awk '{print $2}')
+            echo "$variant baseline=$baseline candidate=$candidate"
+            test "$baseline" = "$candidate"
+          done
+
+      - name: Measure actual ring hot paths
+        shell: bash
+        run: |
+          CANDIDATE=build/m4-4-static-ring/candidate
+          BASELINE=build/m4-4-static-ring/baseline
+          ROUNDS=262144
+          RESULTS=build/m4-4-static-ring/results.tsv
+
+          printf 'compiler\tbuild\tvariant\trounds\tIr\tchecksum\n' > "$RESULTS"
+
+          measure() {
+            build="$1"
+            binary="$2"
+            variant="$3"
+            symbol="$4"
+            out="build/m4-4-static-ring/callgrind-${build}-${variant}.out"
+
+            checksum=$("$binary" "$variant" "$ROUNDS" | awk '{print $2}')
+
+            valgrind \
+              --tool=callgrind \
+              --collect-atstart=no \
+              --toggle-collect="$symbol" \
+              --callgrind-out-file="$out" \
+              "$binary" "$variant" "$ROUNDS" \
+              >/dev/null 2>&1
+
+            ir=$(awk '/^summary:/ {print $2}' "$out")
+            printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+              "${{ matrix.compiler }}" "$build" "$variant" "$ROUNDS" "$ir" "$checksum" >> "$RESULTS"
+          }
+
+          measure baseline "$BASELINE" normal bench_ring_normal
+          measure candidate "$CANDIDATE" normal bench_ring_normal
+          measure baseline "$BASELINE" over bench_ring_over
+          measure candidate "$CANDIDATE" over bench_ring_over
+
+          cat "$RESULTS"
+
+          {
+            echo "### ${{ matrix.compiler }} — actual StaticRingBuffer"
+            echo
+            echo '| Variant | Develop Ir | Factored Ir | Delta | Delta % |'
+            echo '|---|---:|---:|---:|---:|'
+            for variant in normal over
+            do
+              direct=$(awk -F '\t' -v v="$variant" '$2 == "baseline" && $3 == v {print $5}' "$RESULTS")
+              factored=$(awk -F '\t' -v v="$variant" '$2 == "candidate" && $3 == v {print $5}' "$RESULTS")
+              awk -v v="$variant" -v d="$direct" -v a="$factored" 'BEGIN {
+                delta = a - d;
+                pct = d == 0 ? 0 : delta * 100.0 / d;
+                printf "| %s | %d | %d | %+d | %+.6f%% |\n", v, d, a, delta, pct;
+              }'
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: m4-4-static-ring-${{ matrix.compiler }}
+          path: |
+            build/m4-4-static-ring/results.tsv
+            build/m4-4-static-ring/callgrind-*.out
+          if-no-files-found: error
