@@ -95,8 +95,8 @@ jobs:
           diff -u "$OUT/bench_manual.norm" "$OUT/bench_candidate.norm" || true
 
           echo '=== candidate/manual push callees ==='
-          candidate_target=$(grep -E '\\b(call|callq)\\b' "$OUT/bench_candidate.asm" | head -1 | sed -E 's/.*<([^>]+)>.*/\\1/')
-          manual_target=$(grep -E '\\b(call|callq)\\b' "$OUT/bench_manual.asm" | head -1 | sed -E 's/.*<([^>]+)>.*/\\1/')
+          candidate_target=$(grep -E '\b(call|callq)\b' "$OUT/bench_candidate.asm" | head -1 | sed -E 's/.*<([^>]+)>.*/\\1/')
+          manual_target=$(grep -E '\b(call|callq)\b' "$OUT/bench_manual.asm" | head -1 | sed -E 's/.*<([^>]+)>.*/\\1/')
 
           echo "candidate target=$candidate_target"
           echo "manual target=$manual_target"
@@ -105,10 +105,10 @@ jobs:
           objdump -d --no-show-raw-insn --disassemble="$manual_target" "$BIN" > "$OUT/manual-push.asm"
 
           echo "candidate push instructions=$(grep -E '^[[:space:]]*[0-9a-f]+:' "$OUT/candidate-push.asm" | wc -l)"
-          grep -E '\\b(call|callq)\\b' "$OUT/candidate-push.asm" || true
+          grep -E '\b(call|callq)\b' "$OUT/candidate-push.asm" || true
 
           echo "manual push instructions=$(grep -E '^[[:space:]]*[0-9a-f]+:' "$OUT/manual-push.asm" | wc -l)"
-          grep -E '\\b(call|callq)\\b' "$OUT/manual-push.asm" || true
+          grep -E '\b(call|callq)\b' "$OUT/manual-push.asm" || true
 
       - name: Upload codegen evidence
         uses: actions/upload-artifact@v7
