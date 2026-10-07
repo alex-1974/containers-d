@@ -1,0 +1,113 @@
+name: Work-Stealing Native AArch64 Performance
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - source/containers/research/work_stealing_deque.d
+      - benchmarks/work_stealing_contention_parity_probe.d
+      - .github/workflows/perf-work-stealing-aarch64.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  paired-throughput:
+    name: Native AArch64 P08e parity / LDC 1.41
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - name: Check out containers-d
+        uses: actions/checkout@v7
+        with:
+          path: containers-d
+
+      - name: Check out pinned concurrency-d R0.1
+        uses: actions/checkout@v7
+        with:
+          repository: alex-1974/concurrency-d
+          ref: b35a92f3412da6ca8a666cca9c144b5a335e5988
+          path: concurrency-d
+
+      - name: Install LDC
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ldc-1.41.0
+
+      - name: Verify qualification host
+        shell: bash
+        run: |
+          "$DC" --version
+          uname -a
+          lscpu
+          test "$(uname -m)" = "aarch64"
+          test "$(lscpu -p=core | grep -v "^#" | sort -u | wc -l)" -ge 4
+
+      - name: Build paired contention probe
+        shell: bash
+        run: |
+          cd containers-d
+          mkdir -p build/work-stealing-aarch64
+
+          REF=../concurrency-d/research/r0_1_work_stealing_deque/candidate/source
+
+          "$DC" \
+            -O3 \
+            -release \
+            -boundscheck=off \
+            -Isource \
+            -I"$REF" \
+            -of=build/work-stealing-aarch64/probe \
+            benchmarks/work_stealing_contention_parity_probe.d \
+            source/containers/research/work_stealing_deque.d \
+            source/containers/internal/element_lifetime.d \
+            "$REF/concurrency/research/modular_bounded_wsq_batch_marked_top.d" \
+            "$REF/concurrency/research/bounded_wsq.d"
+
+      - name: Run pinned physical-core parity matrix
+        shell: bash
+        run: |
+          cd containers-d
+
+          BIN=build/work-stealing-aarch64/probe
+          RESULTS=build/work-stealing-aarch64/results.txt
+
+          : > "$RESULTS"
+
+          "$BIN" 1 0 524288 5 15 | tee -a "$RESULTS"
+          "$BIN" 1 1 524288 5 15 | tee -a "$RESULTS"
+          "$BIN" 3 0 524288 5 15 | tee -a "$RESULTS"
+          "$BIN" 3 1 524288 5 15 | tee -a "$RESULTS"
+
+          cat "$RESULTS"
+
+          # The candidate and reference compile from the same selected P08e
+          # algorithm and already have exact Ir/layout parity. On a four-
+          # physical-core qualification host, a persistent >10% slowdown
+          # would be material and requires investigation before promotion.
+          awk 'BEGIN { bad = 0 }
+               /ratio=/ {
+                 split($0, parts, "ratio=");
+                 ratio = parts[2] + 0.0;
+                 if (ratio > 1.10) bad = 1;
+               }
+               END { exit bad }' "$RESULTS"
+
+          {
+            echo "### Native AArch64 / LDC 1.41 — pinned P08e parity"
+            echo
+            echo '```text'
+            cat "$RESULTS"
+            echo '```'
+            echo
+            echo "Gate: no workload may show a median containers-d/reference ratio above 1.10."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: work-stealing-aarch64-performance
+          path: containers-d/build/work-stealing-aarch64/results.txt
+          if-no-files-found: error
