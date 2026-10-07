@@ -80,8 +80,12 @@ private ulong processGeometry(scope const(Point2)[] points)
 
     foreach (point; points)
     {
-        checksum = mix(checksum, *cast(const(ulong)*) &point.x);
-        checksum = mix(checksum, *cast(const(ulong)*) &point.y);
+        checksum = mix(
+            checksum,
+            cast(ulong) cast(long)(point.x * 1024.0));
+        checksum = mix(
+            checksum,
+            cast(ulong) cast(long)(point.y * 1024.0));
     }
 
     return checksum;
