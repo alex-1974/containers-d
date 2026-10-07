@@ -80,6 +80,50 @@ private void createUnrootedControl()
     control = null;
 }
 
+pragma(inline, false)
+private Holder createFirstHolder()
+{
+    auto holder = new Holder;
+    assert(holder.scratch.tryReserve(1));
+
+    auto probe = new ReachabilityProbe(
+        ReachabilityProbe.Kind.first,
+        0x51);
+
+    assert(holder.scratch.tryPushBack(
+        OverAlignedReference(probe, 0x51)));
+
+    probe = null;
+    return holder;
+}
+
+pragma(inline, false)
+private void populateSecond(ref Scratch scratch)
+{
+    assert(scratch.tryReserve(4));
+
+    auto probe = new ReachabilityProbe(
+        ReachabilityProbe.Kind.second,
+        0x52);
+
+    assert(scratch.tryPushBack(
+        OverAlignedReference(probe, 0x52)));
+
+    probe = null;
+}
+
+pragma(inline, false)
+private int bufferedCookie(ref Scratch scratch)
+{
+    return scratch[0].reference.cookie;
+}
+
+pragma(inline, false)
+private void resetScratch(ref Scratch scratch)
+{
+    scratch.reset();
+}
+
 private void collectUntil(ref size_t counter)
 {
     foreach (_; 0 .. 64)
@@ -103,41 +147,22 @@ void main()
 
     createUnrootedControl();
 
-    auto holder = new Holder;
-    assert(holder.scratch.tryReserve(1));
-
-    auto first = new ReachabilityProbe(
-        ReachabilityProbe.Kind.first,
-        0x51);
-
-    assert(holder.scratch.tryPushBack(
-        OverAlignedReference(first, 0x51)));
-
-    first = null;
+    auto holder = createFirstHolder();
 
     collectUntil(ReachabilityProbe.controlFinalized);
     assert(ReachabilityProbe.controlFinalized >= 1);
 
     // External malloc-backed scratch storage is now the only intended root.
     assert(ReachabilityProbe.firstFinalized == 0);
-    assert(holder.scratch[0].reference.cookie == 0x51);
+    assert(bufferedCookie(holder.scratch) == 0x51);
 
-    holder.scratch.reset();
+    resetScratch(holder.scratch);
 
     collectUntil(ReachabilityProbe.firstFinalized);
     assert(ReachabilityProbe.firstFinalized >= 1);
 
     // Replacement must unregister the old range and register/clear the new.
-    assert(holder.scratch.tryReserve(4));
-
-    auto second = new ReachabilityProbe(
-        ReachabilityProbe.Kind.second,
-        0x52);
-
-    assert(holder.scratch.tryPushBack(
-        OverAlignedReference(second, 0x52)));
-
-    second = null;
+    populateSecond(holder.scratch);
 
     foreach (_; 0 .. 8)
     {
@@ -146,9 +171,9 @@ void main()
     }
 
     assert(ReachabilityProbe.secondFinalized == 0);
-    assert(holder.scratch[0].reference.cookie == 0x52);
+    assert(bufferedCookie(holder.scratch) == 0x52);
 
-    holder.scratch.reset();
+    resetScratch(holder.scratch);
 
     collectUntil(ReachabilityProbe.secondFinalized);
     assert(ReachabilityProbe.secondFinalized >= 1);
