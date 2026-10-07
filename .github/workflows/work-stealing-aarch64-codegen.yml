@@ -78,7 +78,10 @@ jobs:
             sed -E '/^$/d; /file format/d; /Disassembly of section/d; /^[[:space:]]*[0-9a-f]+ <[^>]+>:/d' "$input" | \
               sed -E 's/^[[:space:]]*[0-9a-f]+:[[:space:]]*//' | \
               sed -E 's/[[:space:]]+<[^>]+>//g' | \
-              sed -E 's/^([[:space:]]*(b(\.[a-z]+)?|bl|cbz|cbnz|tbz|tbnz)[[:space:]].*[,[:space:]])[0-9a-f]+([[:space:]]*(\/\/.*)?)$/\1<TARGET>\3/' > "$output"
+              sed -E 's/^([[:space:]]*b(\.[a-z]+)?[[:space:]]+)[0-9a-f]+(.*)$/\1<TARGET>\3/' | \
+              sed -E 's/^([[:space:]]*bl[[:space:]]+)[0-9a-f]+(.*)$/\1<TARGET>\2/' | \
+              sed -E 's/^([[:space:]]*cbn?z[[:space:]]+[^,]+,[[:space:]]*)[0-9a-f]+(.*)$/\1<TARGET>\2/' | \
+              sed -E 's/^([[:space:]]*tbn?z[[:space:]]+[^,]+,[[:space:]]*#[^,]+,[[:space:]]*)[0-9a-f]+(.*)$/\1<TARGET>\2/' > "$output"
           }
 
           for workload in owner_pair single_steal batch_steal
