@@ -413,6 +413,45 @@ unittest
 
 unittest
 {
+    // Reserve preserves over-alignment after backing replacement.
+    ResearchScratchBuffer!OverAligned scratch;
+
+    assert(scratch.tryReserve(2));
+    assert(scratch.tryPushBack(OverAligned(41)));
+    assert((cast(size_t) &scratch[0]) % OverAligned.alignof == 0);
+
+    scratch.reset();
+    assert(scratch.tryReserve(5));
+    assert(scratch.capacity == 5);
+
+    assert(scratch.tryPushBack(OverAligned(42)));
+    assert((cast(size_t) &scratch[0]) % OverAligned.alignof == 0);
+}
+
+unittest
+{
+    // Indirection-bearing storage remains reusable across empty replacement.
+    ResearchScratchBuffer!WithIndirection scratch;
+    auto object = new Object;
+
+    assert(scratch.tryReserve(1));
+    assert(scratch.tryPushBack(WithIndirection(object, 1)));
+    assert(scratch[0].reference is object);
+
+    scratch.reset();
+
+    assert(scratch.tryReserve(4));
+    assert(scratch.capacity == 4);
+
+    assert(scratch.tryPushBack(WithIndirection(object, 2)));
+    assert(scratch[0].reference is object);
+
+    scratch.reset();
+    assert(scratch.empty);
+}
+
+unittest
+{
     static assert(hasIndirections!WithIndirection);
 
     auto scratch = ResearchScratchBuffer!WithIndirection(2);
