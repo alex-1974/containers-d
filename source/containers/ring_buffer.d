@@ -10,8 +10,12 @@
  */
 module containers.ring_buffer;
 
+import containers.internal.element_lifetime :
+    EndElementLifetimeOps,
+    PlacementMoveOps,
+    sharedElementCopyConstructible = elementCopyConstructible;
 import core.lifetime : emplace, forward, moveEmplace;
-import std.traits : hasElaborateDestructor, hasIndirections, isNested, Unqual;
+import std.traits : hasIndirections, isNested, Unqual;
 
 private alias StaticRingNativePointer = void*;
 
@@ -238,6 +242,9 @@ struct StaticRingBuffer(T, size_t Capacity)
     enum size_t capacity = Capacity;
 
 private:
+    mixin PlacementMoveOps!T;
+    mixin EndElementLifetimeOps!T;
+
     // The raw bytes are the only storage member used by container logic.
     //
     // For indirection-bearing T, StaticRingStorage overlays T[Capacity] only so
@@ -368,55 +375,10 @@ private:
         }
     }
 
-    // Define the container copy contract by the language operation we
-    // actually require: construction of T from an lvalue T. Phobos
-    // isCopyable changed semantics across the controlled compiler matrix and
-    // is therefore too broad for this ownership contract.
-    enum bool elementCopyConstructible = __traits(compiles, {
-        void probe(ref T source)
-        {
-            T copy = source;
-        }
-    });
-
-    // Check whether ordinary language move construction of T is permitted
-    // from @safe code. Placement new itself is @system, so the raw-storage
-    // helper below may only elevate that operation to @trusted when T's
-    // constructor contract is independently @safe.
-    enum bool safeLanguageMove = __traits(compiles, {
-        void probe(ref T source) @safe
-        {
-            T target = __rvalue(source);
-        }
-    });
-
-    static if (__traits(hasMoveConstructor, T))
-    {
-        static if (safeLanguageMove)
-        {
-            T* placementMoveConstruct(
-                T* target,
-                ref T source) @trusted
-            {
-                // Safety proof:
-                // - target comes from slotPointer and is aligned storage for T;
-                // - the caller only supplies an unused destination slot;
-                // - source is a distinct live T;
-                // - T's language move construction is independently @safe;
-                // - placement new begins exactly one T lifetime at target.
-                return new (*target) T(__rvalue(source));
-            }
-        }
-        else
-        {
-            T* placementMoveConstruct(
-                T* target,
-                ref T source) @system
-            {
-                return new (*target) T(__rvalue(source));
-            }
-        }
-    }
+    // Reuse the package-internal language-capability classification while
+    // preserving the existing StaticRingBuffer copy contract.
+    enum bool elementCopyConstructible =
+        sharedElementCopyConstructible!T;
 
     void clearVacatedSlot(size_t physicalIndex) nothrow @safe @nogc
     {
@@ -442,8 +404,7 @@ private:
 
     void endSlotLifetime(size_t physicalIndex)
     {
-        static if (hasElaborateDestructor!T)
-            destroy!false(*slotPointer(physicalIndex));
+        endElementLifetime(slotPointer(physicalIndex));
 
         // Class/interface references and other non-struct indirections are
         // values stored in the slot; removing them must not finalize the
