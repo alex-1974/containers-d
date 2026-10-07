@@ -1,0 +1,5 @@
+name "containers-d-work-stealing-consumer"
+description "External consumer gate for the candidate work-stealing deque API"
+targetType "executable"
+
+dependency "containers-d" path="../../"
