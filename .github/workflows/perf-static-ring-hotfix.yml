@@ -37,6 +37,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Install D compiler
         uses: dlang-community/setup-dlang@v2
@@ -80,6 +82,34 @@ jobs:
               ;;
           esac
 
+          git worktree add --detach build/v010 v0.1.0
+
+          case "${{ matrix.compiler }}" in
+            dmd-*)
+              "$DC" \
+                -O \
+                -release \
+                -inline \
+                -boundscheck=off \
+                -Ibuild/v010/source \
+                -of=build/perf-static-ring-hotfix/d-v010-probe \
+                benchmarks/static_ring_overalignment_perf_probe.d \
+                build/v010/source/containers/package.d \
+                build/v010/source/containers/ring_buffer.d
+              ;;
+            ldc-*)
+              "$DC" \
+                -O3 \
+                -release \
+                -boundscheck=off \
+                -Ibuild/v010/source \
+                -of=build/perf-static-ring-hotfix/d-v010-probe \
+                benchmarks/static_ring_overalignment_perf_probe.d \
+                build/v010/source/containers/package.d \
+                build/v010/source/containers/ring_buffer.d
+              ;;
+          esac
+
           clang++ \
             -std=c++20 \
             -O3 \
@@ -93,6 +123,7 @@ jobs:
         shell: bash
         run: |
           D=build/perf-static-ring-hotfix/d-probe
+          D_BASE=build/perf-static-ring-hotfix/d-v010-probe
           CPP=build/perf-static-ring-hotfix/cpp-probe
           ROUNDS=4096
 
@@ -109,10 +140,14 @@ jobs:
           test "$d_normal" = "$cpp_native"
           test "$d_normal" = "$cpp_dynamic"
 
+          base_normal=$("$D_BASE" normal "$ROUNDS" | awk '{print $2}')
+          test "$base_normal" = "$d_model"
+
       - name: Measure retired instructions
         shell: bash
         run: |
           D=build/perf-static-ring-hotfix/d-probe
+          D_BASE=build/perf-static-ring-hotfix/d-v010-probe
           CPP=build/perf-static-ring-hotfix/cpp-probe
           ROUNDS=262144
           RESULTS=build/perf-static-ring-hotfix/results.tsv
@@ -141,6 +176,8 @@ jobs:
               "$toolchain" "$variant" "$ROUNDS" "$ir" "$checksum" >> "$RESULTS"
           }
 
+          measure d-base "$D_BASE" normal bench_ring_normal
+          measure d-base "$D_BASE" over bench_ring_over
           measure d "$D" normal bench_ring_normal
           measure d "$D" over bench_ring_over
           measure cpp "$CPP" normal bench_ring_normal_native
