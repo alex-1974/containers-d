@@ -55,7 +55,6 @@ jobs:
                 -Isource \
                 -of=build/m7-blocking-storage/probe \
                 benchmarks/blocking_queue_storage_parity_probe.d \
-                source/containers/research/blocking_queue.d \
                 source/containers/runtime_ring_buffer.d \
                 source/containers/internal/ring_sequence.d \
                 source/containers/internal/runtime_storage.d \
@@ -69,7 +68,6 @@ jobs:
                 -Isource \
                 -of=build/m7-blocking-storage/probe \
                 benchmarks/blocking_queue_storage_parity_probe.d \
-                source/containers/research/blocking_queue.d \
                 source/containers/runtime_ring_buffer.d \
                 source/containers/internal/ring_sequence.d \
                 source/containers/internal/runtime_storage.d \
@@ -81,7 +79,7 @@ jobs:
         shell: bash
         run: |
           BIN=build/m7-blocking-storage/probe
-          ROUNDS=64
+          ROUNDS=4096
 
           candidate=$("$BIN" candidate "$ROUNDS" | awk '{print $2}')
           manual=$("$BIN" manual "$ROUNDS" | awk '{print $2}')
@@ -93,7 +91,7 @@ jobs:
         shell: bash
         run: |
           BIN=build/m7-blocking-storage/probe
-          ROUNDS=2048
+          ROUNDS=65536
           RESULTS=build/m7-blocking-storage/results.tsv
 
           printf 'compiler\tvariant\trounds\tIr\tchecksum\n' > "$RESULTS"
