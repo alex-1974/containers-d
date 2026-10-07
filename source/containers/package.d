@@ -5,13 +5,15 @@
  *
  * - $(LREF StaticVector): compile-time fixed-capacity contiguous inline vector;
  * - $(LREF StaticRingBuffer): compile-time capacity inline FIFO ring buffer;
- * - $(LREF RingBuffer): runtime capacity FIFO with one owned backing allocation.
+ * - $(LREF RingBuffer): runtime capacity FIFO with one owned backing allocation;
+ * - $(LREF WorkStealingDeque): bounded single-owner / multi-thief concurrent deque.
  */
 module containers;
 
 public import containers.ring_buffer : StaticRingBuffer;
 public import containers.runtime_ring_buffer : RingBuffer;
 public import containers.static_vector : StaticVector;
+public import containers.work_stealing_deque : WorkStealingDeque;
 
 ///
 unittest
