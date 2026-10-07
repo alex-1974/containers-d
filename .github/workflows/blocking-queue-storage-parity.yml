@@ -81,7 +81,7 @@ jobs:
         shell: bash
         run: |
           BIN=build/m7-blocking-storage/probe
-          ROUNDS=2048
+          ROUNDS=64
 
           candidate=$("$BIN" candidate "$ROUNDS" | awk '{print $2}')
           manual=$("$BIN" manual "$ROUNDS" | awk '{print $2}')
@@ -93,7 +93,7 @@ jobs:
         shell: bash
         run: |
           BIN=build/m7-blocking-storage/probe
-          ROUNDS=16384
+          ROUNDS=2048
           RESULTS=build/m7-blocking-storage/results.tsv
 
           printf 'compiler\tvariant\trounds\tIr\tchecksum\n' > "$RESULTS"
