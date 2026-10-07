@@ -188,12 +188,43 @@ Decision record: `docs/design/public-customization-decision.md`.
 M4 exits with concrete production families and qualified internal composition,
 not a universal framework.
 
+## M5 — Work-stealing deque family — production promotion current
+
+Tracking: issues #38 and #39. Research evidence: PR #54. Promotion: PR #55.
+
+Qualified research result:
+
+- bounded fixed power-of-two capacity;
+- exactly one owner and zero or more thieves;
+- P08e 63-bit marked-top protocol;
+- owner `tryPush`/`pop`;
+- thief `steal`/`stealBatch`;
+- caller-owned batch output;
+- trivial atomically shared-compatible transport values;
+- non-copyable/non-movable concurrent identity;
+- `@safe @nogc nothrow` callable hot operations with one narrow trusted
+  sequential-consistency barrier;
+- exact last-item, multi-thief, near-capacity, wrap and forced marked-top
+  overlap correctness;
+- native Linux x86_64 and native Linux AArch64 qualification;
+- exact DMD/LDC retired-instruction parity against the pinned immutable P08e
+  reference;
+- exact normalized LDC AArch64 instruction-stream parity;
+- balanced four-physical-core AArch64 contention parity with no material
+  regression.
+
+Production promotion exposes only the scheduler-independent container family.
+concurrency-d remains an external read-only reference/consumer in this
+repository; downstream adoption is a separate concurrency-d project decision.
+
+No public size/empty/full snapshot is admitted in the first API.
+
 ## Later candidates
 
 - UniqueBuffer / owned contiguous storage where consumer evidence supports it;
-- ScratchBuffer / Arena families;
+- ScratchBuffer / Arena / BufferPool families;
 - synchronized bounded queues;
-- concurrent work-stealing deque and other explicitly concurrent families.
+- other explicitly concurrent SPSC/MPSC/MPMC families.
 
 Later milestones are admitted only when their contracts, consumers, safety and
 performance gates are explicit.

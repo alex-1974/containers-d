@@ -1,0 +1,177 @@
+name: Work-Stealing P08e Parity
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - source/containers/work_stealing_deque.d
+      - benchmarks/work_stealing_p08e_parity_probe.d
+      - .github/workflows/perf-work-stealing-p08e-parity.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  retired-instructions:
+    name: P08e parity Ir / ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - dmd-2.111.0
+          - ldc-1.41.0
+
+    steps:
+      - name: Check out containers-d
+        uses: actions/checkout@v7
+        with:
+          path: containers-d
+
+      - name: Check out pinned concurrency-d R0.1
+        uses: actions/checkout@v7
+        with:
+          repository: alex-1974/concurrency-d
+          ref: b35a92f3412da6ca8a666cca9c144b5a335e5988
+          path: concurrency-d
+
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ${{ matrix.compiler }}
+
+      - name: Install Callgrind
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y valgrind
+
+      - name: Build same-binary candidate/reference probe
+        shell: bash
+        run: |
+          cd containers-d
+          mkdir -p build/work-stealing-p08e
+
+          REF=../concurrency-d/research/r0_1_work_stealing_deque/candidate/source
+
+          case "${{ matrix.compiler }}" in
+            dmd-*)
+              "$DC" \
+                -O \
+                -release \
+                -inline \
+                -boundscheck=off \
+                -Isource \
+                -I"$REF" \
+                -of=build/work-stealing-p08e/probe \
+                benchmarks/work_stealing_p08e_parity_probe.d \
+                source/containers/work_stealing_deque.d \
+                source/containers/internal/element_lifetime.d \
+                "$REF/concurrency/research/modular_bounded_wsq_batch_marked_top.d" \
+                "$REF/concurrency/research/bounded_wsq.d"
+              ;;
+            ldc-*)
+              "$DC" \
+                -O3 \
+                -release \
+                -boundscheck=off \
+                -Isource \
+                -I"$REF" \
+                -of=build/work-stealing-p08e/probe \
+                benchmarks/work_stealing_p08e_parity_probe.d \
+                source/containers/work_stealing_deque.d \
+                source/containers/internal/element_lifetime.d \
+                "$REF/concurrency/research/modular_bounded_wsq_batch_marked_top.d" \
+                "$REF/concurrency/research/bounded_wsq.d"
+              ;;
+          esac
+
+      - name: Verify semantic parity
+        shell: bash
+        run: |
+          cd containers-d
+          BIN=build/work-stealing-p08e/probe
+
+          owner_candidate=$("$BIN" candidate-owner 4096 | awk '{print $2}')
+          owner_reference=$("$BIN" reference-owner 4096 | awk '{print $2}')
+          steal_candidate=$("$BIN" candidate-steal 4096 | awk '{print $2}')
+          steal_reference=$("$BIN" reference-steal 4096 | awk '{print $2}')
+          batch_candidate=$("$BIN" candidate-batch 512 | awk '{print $2}')
+          batch_reference=$("$BIN" reference-batch 512 | awk '{print $2}')
+
+          test "$owner_candidate" = "$owner_reference"
+          test "$steal_candidate" = "$steal_reference"
+          test "$batch_candidate" = "$batch_reference"
+
+      - name: Measure retired instructions
+        shell: bash
+        run: |
+          cd containers-d
+          BIN=build/work-stealing-p08e/probe
+          RESULTS=build/work-stealing-p08e/results.tsv
+
+          printf 'compiler\tworkload\tvariant\trounds\tIr\tchecksum\n' > "$RESULTS"
+
+          measure() {
+            workload="$1"
+            variant="$2"
+            rounds="$3"
+            symbol="$4"
+            selected="${variant}-${workload}"
+            out="build/work-stealing-p08e/callgrind-${workload}-${variant}.out"
+
+            checksum=$("$BIN" "$selected" "$rounds" | awk '{print $2}')
+
+            valgrind \
+              --tool=callgrind \
+              --collect-atstart=no \
+              --toggle-collect="$symbol" \
+              --callgrind-out-file="$out" \
+              "$BIN" "$selected" "$rounds" \
+              >/dev/null 2>&1
+
+            ir=$(awk '/^summary:/ {print $2}' "$out")
+            printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+              "${{ matrix.compiler }}" "$workload" "$variant" \
+              "$rounds" "$ir" "$checksum" >> "$RESULTS"
+          }
+
+          measure owner candidate 131072 bench_candidate_owner_pair
+          measure owner reference 131072 bench_reference_owner_pair
+
+          measure steal candidate 131072 bench_candidate_single_steal
+          measure steal reference 131072 bench_reference_single_steal
+
+          measure batch candidate 16384 bench_candidate_batch_steal
+          measure batch reference 16384 bench_reference_batch_steal
+
+          cat "$RESULTS"
+
+          {
+            echo "### ${{ matrix.compiler }} — containers-d vs pinned P08e"
+            echo
+            echo '| Workload | P08e Ir | containers-d Ir | Delta | Delta % |'
+            echo '|---|---:|---:|---:|---:|'
+            for workload in owner steal batch
+            do
+              reference=$(awk -F '\t' -v w="$workload" '$2 == w && $3 == "reference" {print $5}' "$RESULTS")
+              candidate=$(awk -F '\t' -v w="$workload" '$2 == w && $3 == "candidate" {print $5}' "$RESULTS")
+              awk -v w="$workload" -v r="$reference" -v c="$candidate" 'BEGIN {
+                delta = c - r;
+                pct = r == 0 ? 0 : delta * 100.0 / r;
+                printf "| %s | %d | %d | %+d | %+.6f%% |\n", w, r, c, delta, pct;
+              }'
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: work-stealing-p08e-parity-${{ matrix.compiler }}
+          path: |
+            containers-d/build/work-stealing-p08e/results.tsv
+            containers-d/build/work-stealing-p08e/callgrind-*.out
+          if-no-files-found: error
