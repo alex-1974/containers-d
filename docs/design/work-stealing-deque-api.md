@@ -96,6 +96,10 @@ size_t stealBatch(scope T[] output);
 Semantic roles:
 
 - `tryPush`: owner-only insertion; false means full;
+`tryPush(T)` intentionally keeps the qualified by-value `T` source contract;
+the first API does not promise implicit conversion from a `const T` struct
+lvalue to mutable `T`. Callers may pass ordinary T values/rvalues. Broader
+insertion-source genericity requires separate compile/codegen evidence;
 - `pop`: owner-only LIFO removal; `found == false` means no value won by owner;
 - `steal`: thief-safe FIFO removal; `found == false` means no value obtained;
 - `stealBatch`: thief-safe FIFO-prefix removal into caller-owned output;
