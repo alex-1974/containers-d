@@ -76,10 +76,10 @@ jobs:
 
           : > "$RESULTS"
 
-          "$BIN" 1 0 524288 5 15 | tee -a "$RESULTS"
-          "$BIN" 1 1 524288 5 15 | tee -a "$RESULTS"
-          "$BIN" 3 0 524288 5 15 | tee -a "$RESULTS"
-          "$BIN" 3 1 524288 5 15 | tee -a "$RESULTS"
+          "$BIN" 1 0 524288 5 16 | tee -a "$RESULTS"
+          "$BIN" 1 1 524288 5 16 | tee -a "$RESULTS"
+          "$BIN" 3 0 524288 5 16 | tee -a "$RESULTS"
+          "$BIN" 3 1 524288 5 16 | tee -a "$RESULTS"
 
           cat "$RESULTS"
 
@@ -88,9 +88,10 @@ jobs:
           # physical-core qualification host, a persistent >10% slowdown
           # would be material and requires investigation before promotion.
           awk 'BEGIN { bad = 0 }
-               /ratio=/ {
-                 split($0, parts, "ratio=");
-                 ratio = parts[2] + 0.0;
+               /paired_ratio=/ {
+                 split($0, parts, "paired_ratio=");
+                 split(parts[2], fields, " ");
+                 ratio = fields[1] + 0.0;
                  if (ratio > 1.10) bad = 1;
                }
                END { exit bad }' "$RESULTS"
@@ -102,7 +103,7 @@ jobs:
             cat "$RESULTS"
             echo '```'
             echo
-            echo "Gate: no workload may show a median containers-d/reference ratio above 1.10."
+            echo "Gate: no workload may show a median paired containers-d/reference ratio above 1.10."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload evidence
