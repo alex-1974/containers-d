@@ -247,6 +247,22 @@ public:
     }
 
     /**
+     * Replaces this owner's raw allocation with storage for newCapacity T
+     * slots.
+     *
+     * The owner does not track live T objects. The consuming container must
+     * guarantee that no T lifetime remains in this storage before calling.
+     * This primitive exists for M6 empty-only scratch capacity
+     * re-establishment; it is not public API.
+     */
+    package(containers) void replaceEmptyCapacity(
+        size_t newCapacity) scope @safe @nogc nothrow
+    {
+        releaseStorage();
+        initialize(newCapacity);
+    }
+
+    /**
      * Transfers unique ownership from another owner into this inert owner.
      *
      * The slice descriptor always denotes storage acquired by Backend rather
