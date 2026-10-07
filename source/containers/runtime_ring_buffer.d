@@ -7,7 +7,9 @@ module containers.runtime_ring_buffer;
 
 import containers.internal.element_lifetime :
     EndElementLifetimeOps,
-    PlacementMoveOps;
+    PlacementMoveOps,
+    elementHasIndirections,
+    elementNeedsDestruction;
 import containers.internal.ring_sequence : RingSequenceOps;
 import containers.internal.runtime_storage :
     RuntimeStorageAccessOps,
@@ -144,6 +146,7 @@ public:
      *
      * Precondition: the buffer is not empty.
      */
+    pragma(inline, true)
     ref T front() scope return
     {
         assert(!empty);
@@ -151,6 +154,7 @@ public:
     }
 
     /// ditto
+    pragma(inline, true)
     ref const(T) front() const scope return
     {
         assert(!empty);
@@ -264,6 +268,7 @@ public:
      * insertion therefore does not depend on the unresolved rvalue behavior of
      * `core.lifetime.emplace` tracked in issue #8.
      */
+    pragma(inline, true)
     bool tryPushBack(U)(auto ref U value)
     if (is(Unqual!U == T) &&
         __traits(compiles, emplace(cast(T*) null, forward!value)))
@@ -273,7 +278,14 @@ public:
 
         const physical = physicalIndex(_length);
 
-        static if (__traits(hasMoveConstructor, T) &&
+        static if (__traits(isScalar, T))
+        {
+            // Scalar T has no elaborate construction semantics. Store directly
+            // into the qualified runtime slot so DMD does not route the common
+            // numeric/handle path through generic core.lifetime.emplace.
+            *runtimeSlotPointer(physical) = value;
+        }
+        else static if (__traits(hasMoveConstructor, T) &&
             is(U == T) &&
             !__traits(isRef, value))
         {
@@ -293,12 +305,17 @@ public:
      *
      * Precondition: the buffer is not empty.
      */
+    pragma(inline, true)
     void popFront()
     {
         assert(!empty);
 
-        const physical = _head;
-        endSlotLifetime(physical);
+        static if (elementNeedsDestruction!T ||
+            elementHasIndirections!T)
+        {
+            const physical = _head;
+            endSlotLifetime(physical);
+        }
 
         consumeFrontState();
     }
