@@ -346,11 +346,25 @@ public:
 
     /**
      * Destroys all live elements while retaining the backing allocation.
+     *
+     * Trivial pointer-free T has no lifetime or GC-sanitation work, so clear
+     * is an O(1) sequence-state reset. Nontrivial/indirection-bearing T keeps
+     * the explicit per-slot lifetime path.
      */
+    pragma(inline, true)
     void clear()
     {
-        while (!empty)
-            popFront();
+        static if (elementNeedsDestruction!T ||
+            elementHasIndirections!T)
+        {
+            while (!empty)
+                popFront();
+        }
+        else
+        {
+            _head = 0;
+            _length = 0;
+        }
     }
 }
 
