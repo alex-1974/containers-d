@@ -35,7 +35,10 @@ enum BlockingQueuePopStatus
 /// Result of a blocking pop operation.
 struct BlockingQueuePopResult(T)
 {
+    /// Whether this result carries a value or reports final closure.
     BlockingQueuePopStatus status;
+
+    /// Removed value when status is `value`; otherwise `T.init`.
     T value;
 
     /// Whether this result contains a queued value.
