@@ -298,9 +298,8 @@ stale conservative roots.
 
 The fixed- and runtime-capacity ring-buffer families are released through
 v0.1.1. The current development line additionally contains the qualified
-`StaticVector!(T, Capacity)`, `ScratchBuffer!T`, and
-`WorkStealingDeque!(T, Capacity)` families and is promoting the independently
-qualified `BlockingQueue!T` bounded synchronized FIFO family.
+`StaticVector!(T, Capacity)`, `ScratchBuffer!T`,
+`WorkStealingDeque!(T, Capacity)`, and `BlockingQueue!T` families.
 
 Future candidates include:
 
