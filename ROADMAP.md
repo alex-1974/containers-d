@@ -259,7 +259,7 @@ Architecture decision:
 Production promotion completed through PR #60 and merged to develop as
 `6b8df935417c1d095df15e24c886b4863f0416ae`.
 
-## M7 — Bounded BlockingQueue over ring storage — production promotion current
+## M7 — Bounded BlockingQueue over ring storage — complete
 
 Research tracking: issue #28. Research evidence: PR #62.  
 Production tracking: issue #63. Promotion: PR #64.
@@ -297,6 +297,9 @@ research questions.
 
 Consumer repositories remain read-only evidence sources; no DCanvas or
 raster-d migration is part of this promotion.
+
+Production promotion completed through PR #64 and merged to develop as
+`2662a97b09b6aa619d150c727af13fc85852fea3`.
 
 ## Later candidates
 
