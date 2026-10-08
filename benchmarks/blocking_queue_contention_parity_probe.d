@@ -25,8 +25,6 @@ version (linux)
 import std.algorithm : sort;
 import std.stdio : writeln;
 
-enum size_t queueCapacity = 256;
-
 private final class ManualBlockingQueue
 {
 private:
@@ -55,9 +53,11 @@ public:
             if (_length == _storage.length)
                 return BlockingQueuePushResult.full;
 
-            size_t physical = _head + _length;
-            if (physical >= _storage.length)
-                physical -= _storage.length;
+            const tailRoom = _storage.length - _head;
+            const physical =
+                _length < tailRoom
+                    ? _head + _length
+                    : _length - tailRoom;
 
             _storage[physical] = value;
             ++_length;
@@ -161,12 +161,14 @@ private ulong xorZeroTo(ulong inclusive)
 private double runTransfer(Q)(
     size_t producerCount,
     size_t consumerCount,
+    size_t capacity,
     size_t total)
 {
     if (
         producerCount == 0 ||
         consumerCount == 0 ||
         producerCount + consumerCount > 4 ||
+        capacity == 0 ||
         total == 0 ||
         total % producerCount != 0)
     {
@@ -174,7 +176,7 @@ private double runTransfer(Q)(
             "invalid contention topology");
     }
 
-    auto queue = new Q(queueCapacity);
+    auto queue = new Q(capacity);
 
     shared ulong ready;
     shared bool start;
@@ -363,6 +365,7 @@ private double median(double[] values)
 private void compare(
     size_t producerCount,
     size_t consumerCount,
+    size_t capacity,
     size_t total,
     size_t warmups,
     size_t samples)
@@ -372,11 +375,13 @@ private void compare(
         runTransfer!(ResearchBlockingQueue!ulong)(
             producerCount,
             consumerCount,
+            capacity,
             total);
 
         runTransfer!ManualBlockingQueue(
             producerCount,
             consumerCount,
+            capacity,
             total);
     }
 
@@ -392,12 +397,14 @@ private void compare(
                 runTransfer!(ResearchBlockingQueue!ulong)(
                     producerCount,
                     consumerCount,
+                    capacity,
                     total);
 
             manual[sample] =
                 runTransfer!ManualBlockingQueue(
                     producerCount,
                     consumerCount,
+                    capacity,
                     total);
         }
         else
@@ -406,12 +413,14 @@ private void compare(
                 runTransfer!ManualBlockingQueue(
                     producerCount,
                     consumerCount,
+                    capacity,
                     total);
 
             candidate[sample] =
                 runTransfer!(ResearchBlockingQueue!ulong)(
                     producerCount,
                     consumerCount,
+                    capacity,
                     total);
         }
 
@@ -428,7 +437,8 @@ private void compare(
         median(pairedRatios.dup);
 
     writeln(
-        "producers=", producerCount,
+        "capacity=", capacity,
+        " producers=", producerCount,
         " consumers=", consumerCount,
         " candidate_ns=", candidateMedian,
         " manual_ns=", manualMedian,
@@ -440,8 +450,13 @@ void main()
     enum size_t total = 65_536;
     enum size_t warmups = 1;
     enum size_t samples = 6;
+    enum size_t[3] capacities = [1, 16, 256];
 
-    compare(1, 1, total, warmups, samples);
-    compare(2, 1, total, warmups, samples);
-    compare(2, 2, total, warmups, samples);
+    foreach (capacity; capacities)
+    {
+        compare(1, 1, capacity, total, warmups, samples);
+        compare(2, 1, capacity, total, warmups, samples);
+        compare(1, 2, capacity, total, warmups, samples);
+        compare(2, 2, capacity, total, warmups, samples);
+    }
 }
