@@ -126,7 +126,7 @@ jobs:
           test "$candidate" = "$manual"
 
       - name: Upload evidence
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v6
         with:
           name: scratch-buffer-reuse-${{ matrix.compiler }}
           path: |
