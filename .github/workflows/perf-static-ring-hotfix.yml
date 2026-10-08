@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - main
+      - 'release/**'
     paths:
       - source/containers/ring_buffer.d
       - benchmarks/static_ring_overalignment_perf_probe.d
