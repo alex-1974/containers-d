@@ -259,45 +259,44 @@ Architecture decision:
 Production promotion completed through PR #60 and merged to develop as
 `6b8df935417c1d095df15e24c886b4863f0416ae`.
 
-## M7 — Bounded BlockingQueue over ring storage — current
+## M7 — Bounded BlockingQueue over ring storage — production promotion current
 
-Tracking: issue #28.
+Research tracking: issue #28. Research evidence: PR #62.  
+Production tracking: issue #63.
 
-M7 researches a synchronized bounded FIFO family layered over already-qualified
-ring storage. It is deliberately **not** a `threadSafe=true` mode of
-`RingBuffer`.
+Qualified research result:
 
-Initial semantic target:
-
-- fixed runtime capacity established at construction;
-- bounded FIFO storage, initially `RingBuffer!T`;
-- mutex + condition synchronization;
+- separate synchronized family rather than a thread-safety policy on RingBuffer;
+- fixed runtime capacity backed by the qualified `RingBuffer!T` family;
+- one mutex + condition variable with MPMC semantics under that mutex;
 - non-blocking producer admission with explicit `pushed`, `full`, and
   `closed` outcomes;
-- blocking consumer wait with explicit value/closed result;
-- idempotent `close()`;
-- close rejects future pushes;
-- close-and-drain: already queued values remain consumable after close;
-- blocked consumers wake when close makes further waiting pointless;
-- condition waits always re-check predicates to tolerate spurious wakeups;
-- no backing-storage allocation during queue operations after construction;
-- first research contract permits multiple producers and multiple consumers
-  under the mutex; topology-specific lock-free families remain separate.
+- blocking consumer with explicit value/closed result;
+- idempotent close, close-and-drain, and wake-all semantics;
+- predicate-loop protection against spurious condition-variable wakes;
+- first element contract restricted to copyable `T`;
+- no operation-time FIFO backing reallocation after construction;
+- fair storage parity on DMD 2.111 and LDC 1.41;
+- native LDC x86_64 and AArch64 contention qualification across capacities
+  1, 16, and 256 and 1P1C/2P1C/1P2C/2P2C topologies;
+- uncontended synchronization, wait/wake, and close/wake-all measurements in
+  the same performance class as the equivalent manual Mutex/Condition queue.
 
-M7 research order:
+Production promotion admits only the stable bounded blocking FIFO contract:
 
-1. define push/pop result carriers and close/drain state machine;
-2. build the minimal mutex/condition prototype over `RingBuffer!T`;
-3. qualify deterministic empty/full/close/drain/wakeup races;
-4. define destruction/lifetime rules for queues with active waiters;
-5. separate storage-layer overhead from synchronization-layer overhead;
-6. compare 1P1C, MP1C and MPMC contention without claiming lock-free semantics;
-7. decide whether the family deserves production promotion.
+- `BlockingQueue!T`;
+- `BlockingQueuePushResult`;
+- `BlockingQueuePopResult!T` / `BlockingQueuePopStatus`;
+- immutable `capacity`;
+- `tryPush`, `waitPop`, and `close`.
 
-The first research element contract may be narrower than the eventual public
-API where that is needed to keep value transfer/lifetime semantics explicit.
+The first public API deliberately omits immediately stale concurrent
+`length`/`empty`/`full`/`closed` snapshots. Move-only synchronized
+transfer and explicit destruction while active waiters exist remain deferred
+research questions.
+
 Consumer repositories remain read-only evidence sources; no DCanvas or
-raster-d migration is performed by this milestone.
+raster-d migration is part of this promotion.
 
 ## Later candidates
 
@@ -305,7 +304,6 @@ raster-d migration is performed by this milestone.
   them;
 - public UniqueBuffer only if future consumers require direct transferable
   contiguous ownership as an observable contract;
-- synchronized bounded queues (#28);
 - other explicitly concurrent SPSC/MPSC/MPMC families.
 
 Later milestones are admitted only when their contracts, consumers, safety and
