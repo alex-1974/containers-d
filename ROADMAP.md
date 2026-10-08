@@ -301,6 +301,44 @@ raster-d migration is part of this promotion.
 Production promotion completed through PR #64 and merged to develop as
 `2662a97b09b6aa619d150c727af13fc85852fea3`.
 
+## M8 — Nested/local element qualification — research
+
+Tracking: issue #10.
+
+M8 qualifies the boundary between containers-d raw-storage/lifetime machinery
+and D element types that may carry hidden lexical or aggregate context.
+
+Research scope:
+
+- distinguish module-scope, local-without-capture, local-with-capture and
+  nested aggregate-context element types;
+- record `__traits(isNested, T)` and observable context requirements;
+- establish primitive D/toolchain reference behavior before involving
+  containers-d;
+- qualify placement construction, language move, copy where permitted,
+  destruction, alignment and GC reachability;
+- exercise the relevant paths through `StaticRingBuffer`, `StaticVector` and
+  package-internal lifetime/raw-slot machinery;
+- extend to runtime external storage only where primitive evidence shows that
+  context-bearing values can be represented safely;
+- compare DMD 2.111.0 and LDC 1.41.0 with supported newer compilers and canary
+  compilers where needed to distinguish language semantics from toolchain
+  defects;
+- preserve zero-cost behavior and generated-code quality for ordinary
+  non-nested element types.
+
+M8 exits with one explicit evidence-backed contract:
+
+1. supported nested/local categories;
+2. a precisely defined partially supported subset with compile-time rejection
+   of unsupported forms;
+3. explicit unsupported-by-contract semantics; or
+4. a reduced upstream toolchain defect before any public-contract change.
+
+Raw byte copying of hidden context is not an admissible workaround.
+
+No production API change is assumed before the research decision is complete.
+
 ## Later candidates
 
 - Arena / BufferPool as separate families where consumer evidence justifies
