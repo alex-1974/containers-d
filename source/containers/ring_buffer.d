@@ -195,7 +195,13 @@ version (unittest)
 }
 
 ///
-/// Stores up to `Capacity` FIFO elements in inline storage.
+/// Fixed-capacity FIFO for small bounded queues that should carry their storage
+/// inline with the owning object.
+///
+/// Use StaticRingBuffer when the maximum queue size is known at compile time
+/// and a separate backing allocation is undesirable. It preserves FIFO order
+/// across physical wraparound and can expose the logical sequence as at most
+/// two contiguous borrowed segments.
 ///
 /// Exactly `length` slots contain live `T` objects. Unused slots are raw
 /// storage and are not default-constructed merely because the buffer exists.
@@ -461,19 +467,34 @@ public:
     // self-assignment and exception guarantees are specified.
     @disable ref typeof(this) opAssign(ref typeof(this) rhs);
 
-    /// Returns the number of live elements.
+    /**
+     * Returns the number of live elements.
+     *
+     * Returns:
+     *   Current logical FIFO length.
+     */
     size_t length() const nothrow @safe @nogc
     {
         return _length;
     }
 
-    /// Returns whether the buffer contains no live elements.
+    /**
+     * Reports whether the buffer contains no live elements.
+     *
+     * Returns:
+     *   `true` when `length == 0`.
+     */
     bool empty() const nothrow @safe @nogc
     {
         return _length == 0;
     }
 
-    /// Returns whether all `Capacity` slots contain live elements.
+    /**
+     * Reports whether all `Capacity` slots contain live elements.
+     *
+     * Returns:
+     *   `true` when no additional element can be inserted.
+     */
     bool full() const nothrow @safe @nogc
     {
         return _length == Capacity;
@@ -518,10 +539,16 @@ public:
     }
 
     /**
-     * Returns a mutable reference to an element by logical FIFO index.
+     * Returns a mutable reference by logical FIFO index.
+     *
+     * Params:
+     *   logicalIndex = zero-based position in FIFO order
+     *
+     * Returns:
+     *   Borrowed reference to the selected live element.
      *
      * Preconditions:
-     *   logicalIndex is less than length.
+     *   `logicalIndex < length`.
      */
     ref T opIndex(size_t logicalIndex)
     {
@@ -635,6 +662,9 @@ public:
     /**
      * Appends one value without overwriting existing elements.
      *
+     * Params:
+     *   value = value used to construct the new logical back element
+     *
      * Returns false when full. On that path the logical sequence is unchanged
      * and the container performs no allocation or element construction.
      *
@@ -747,14 +777,21 @@ public:
 
 }
 
-///
+/// Keep a small FIFO entirely inside its owning object.
 unittest
 {
     StaticRingBuffer!(int, 3) buffer;
+
+    // The checked push never overwrites an older queued value.
     assert(buffer.tryPushBack(10));
     assert(buffer.tryPushBack(20));
+
+    // FIFO removal exposes the oldest remaining value.
     buffer.popFront();
     assert(buffer.front == 20);
+
+    // Capacity is compile-time fixed and requires no backing allocation.
+    static assert(buffer.capacity == 3);
 }
 
 unittest
