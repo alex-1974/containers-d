@@ -187,14 +187,33 @@ LDC.
 
 ### Synchronization/contention
 
-Measure separately:
+Stage 2 is active after storage parity qualified RingBuffer as the backing FIFO.
 
+The contention probe compares the RingBuffer-backed queue with a direct manual
+blocking queue under the same Mutex/Condition, close-and-drain, non-blocking
+producer admission, and overflow-safe tail-room ring sequencing.
+
+The first qualification matrix covers:
+
+- capacities 1, 16, and 256;
 - 1 producer / 1 consumer;
-- multiple producers / 1 consumer;
-- multiple producers / multiple consumers.
+- 2 producers / 1 consumer;
+- 1 producer / 2 consumers;
+- 2 producers / 2 consumers;
+- native Linux x86_64 with LDC 1.41;
+- native Linux AArch64 with LDC 1.41.
+
+Each run verifies exact count, sum, and xor accounting before accepting timing
+data. Candidate/manual execution order alternates per sample and the reported
+comparison is the median of paired candidate/manual ratios.
+
+The initial gate is deliberately diagnostic: a paired-median candidate ratio
+above 1.25 is considered materially off-class and stops the current design path
+for investigation. Passing that guard is not yet a final performance claim.
 
 Wall-clock contention is topology/scheduler sensitive and must not be confused
-with storage abstraction cost.
+with storage abstraction cost. DMD remains a correctness/code-generation
+control; LDC is the primary optimized performance compiler for this stage.
 
 ## Non-goals
 
