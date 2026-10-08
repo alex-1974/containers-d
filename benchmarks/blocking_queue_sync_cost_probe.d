@@ -34,6 +34,7 @@ private:
     size_t _head;
     size_t _length;
     bool _closed;
+    size_t _waitingConsumers;
 
 public:
     this(size_t capacity)
@@ -70,7 +71,11 @@ public:
         synchronized (_mutex)
         {
             while (_length == 0 && !_closed)
+            {
+                ++_waitingConsumers;
+                scope(exit) --_waitingConsumers;
                 _notEmpty.wait();
+            }
 
             if (_length == 0)
                 return BlockingQueuePopResult!ulong(
@@ -105,6 +110,12 @@ public:
             _notEmpty.notifyAll();
             return true;
         }
+    }
+
+    size_t researchWaitingConsumers()
+    {
+        synchronized (_mutex)
+            return _waitingConsumers;
     }
 }
 
@@ -243,6 +254,100 @@ private double runWakeRoundTrip(Q)(size_t rounds)
         cast(double)rounds;
 }
 
+private double runCloseWakeAll(Q)(size_t waiterCount)
+{
+    if (waiterCount == 0 || waiterCount > 3)
+        throw new Exception("invalid waiter count");
+
+    auto queue = new Q(1);
+    shared ulong finished;
+    auto consumers = new Thread[](waiterCount);
+
+    pinCurrentThread(0);
+
+    foreach (i; 0 .. waiterCount)
+    {
+        consumers[i] = new Thread({
+            pinCurrentThread(i + 1);
+
+            const result = queue.waitPop();
+            if (result.status != BlockingQueuePopStatus.closed)
+                throw new Exception("close wake returned value");
+
+            atomicFetchAdd!(MemoryOrder.seq)(finished, 1UL);
+        });
+
+        consumers[i].start();
+    }
+
+    while (queue.researchWaitingConsumers() != waiterCount)
+        Thread.yield();
+
+    const before = MonoTime.currTime;
+
+    if (!queue.close())
+        throw new Exception("first close did not transition");
+
+    while (
+        atomicLoad!(MemoryOrder.acq)(finished) !=
+        cast(ulong)waiterCount)
+    {
+    }
+
+    const after = MonoTime.currTime;
+
+    foreach (consumer; consumers)
+        consumer.join();
+
+    if (queue.close())
+        throw new Exception("second close unexpectedly transitioned");
+
+    return cast(double)(after - before).total!"nsecs";
+}
+
+private void compareCloseWakeAll(
+    size_t waiterCount,
+    size_t warmups,
+    size_t samples)
+{
+    foreach (_; 0 .. warmups)
+    {
+        runCloseWakeAll!(ResearchBlockingQueue!ulong)(waiterCount);
+        runCloseWakeAll!ManualBlockingQueue(waiterCount);
+    }
+
+    auto candidate = new double[](samples);
+    auto manual = new double[](samples);
+    auto ratios = new double[](samples);
+
+    foreach (sample; 0 .. samples)
+    {
+        if ((sample & 1) == 0)
+        {
+            candidate[sample] =
+                runCloseWakeAll!(ResearchBlockingQueue!ulong)(waiterCount);
+            manual[sample] =
+                runCloseWakeAll!ManualBlockingQueue(waiterCount);
+        }
+        else
+        {
+            manual[sample] =
+                runCloseWakeAll!ManualBlockingQueue(waiterCount);
+            candidate[sample] =
+                runCloseWakeAll!(ResearchBlockingQueue!ulong)(waiterCount);
+        }
+
+        ratios[sample] = candidate[sample] / manual[sample];
+    }
+
+    writeln(
+        "mode=close-wake-all",
+        " waiters=", waiterCount,
+        " candidate_ns=", median(candidate.dup),
+        " manual_ns=", median(manual.dup),
+        " ratio=", median(ratios.dup));
+}
+
 private void compareUncontended(
     size_t rounds,
     size_t warmups,
@@ -331,4 +436,7 @@ void main()
 {
     compareUncontended(1_000_000, 2, 8);
     compareWake(16_384, 1, 6);
+
+    foreach (waiterCount; [1, 2, 3])
+        compareCloseWakeAll(waiterCount, 2, 8);
 }
