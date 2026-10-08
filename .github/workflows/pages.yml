@@ -2,8 +2,15 @@ name: API documentation
 
 on:
   push:
+    branches:
+      - develop
     tags:
       - 'v*'
+    paths:
+      - .github/workflows/pages.yml
+      - tools/build-versioned-docs.sh
+      - RELEASING.md
+      - .gitattributes
   pull_request:
     branches:
       - develop
