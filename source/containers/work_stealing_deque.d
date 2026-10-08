@@ -36,7 +36,10 @@ version (ContainersWorkStealingTestHooks)
  */
 struct WorkStealingTakeResult(T)
 {
+    /// Transported value when $(LREF found) is true; otherwise `T.init`.
     T value;
+
+    /// Whether the operation successfully removed one value.
     bool found;
 }
 
@@ -95,18 +98,21 @@ private void workStealingSeqCstBarrier(
 }
 
 /**
- * Fixed-capacity work-stealing deque for one owner and zero or more thieves.
+ * Fixed-capacity deque for schedulers with one owner thread and one or more
+ * stealing worker threads.
  *
- * The owner may call `tryPush` and `pop`. Thief threads may call `steal` and
- * `stealBatch`. Calling owner-only operations from more than one thread
- * violates the concurrency protocol even though the operations are `@safe`.
+ * The owner pushes and pops work at the bottom. Thieves remove work from the
+ * opposite end. This lets the owner use a fast local LIFO path while thieves
+ * obtain older work in FIFO order. Use this family for work-stealing
+ * schedulers; do not use it as a general multi-producer queue.
  *
- * The deque transports trivial atomic value representations; it does not own
- * referenced objects. Pointee lifetime and reclamation remain the caller's
- * responsibility.
+ * Calling owner-only operations from more than one thread violates the
+ * concurrency protocol even though the operations are `@safe`. The deque
+ * transports trivial atomic value representations and does not own referenced
+ * objects. Pointee lifetime and reclamation remain the caller's responsibility.
  *
- * The deque never resizes and performs no scheduler policy when full.
- * `.init` is a valid empty deque.
+ * The deque never resizes and performs no scheduler action when full. `.init`
+ * is a valid empty deque.
  *
  * Params:
  *   T = trivial atomically transportable shared-compatible value
@@ -117,12 +123,17 @@ private void workStealingSeqCstBarrier(
  *   Construction and steady-state operations perform no backing allocation.
  *
  * Thread_Safety:
- *   Exactly one owner thread may call `tryPush`/`pop`; zero or more thief
- *   threads may call `steal`/`stealBatch` concurrently.
+ *   Exactly one owner thread may call `tryPush` and `pop`. Zero or more
+ *   thief threads may call `steal` and `stealBatch` concurrently.
  *
  * Identity:
- *   Copy construction, move construction and assignment are disabled.
- *   Establish the deque at its final address before concurrent use.
+ *   Copy construction, move construction, assignment, and pass-by-value use
+ *   are disabled. Establish the deque at its final address before concurrent
+ *   use.
+ *
+ * Failure:
+ *   Full or empty conditions are reported through operation results. The deque
+ *   does not block, resize, spill, park threads, or run scheduler policy.
  */
 struct WorkStealingDeque(T, size_t Capacity)
 {
@@ -143,9 +154,12 @@ struct WorkStealingDeque(T, size_t Capacity)
 
     /// Compile-time maximum number of queued elements.
     enum size_t capacity = Capacity;
-    enum size_t mask = Capacity - 1;
 
 private:
+    // Slot masking is an implementation detail of the power-of-two storage
+    // layout. Keeping it private avoids turning the chosen index arithmetic
+    // into a caller-visible compatibility promise.
+    enum size_t mask = Capacity - 1;
     /*
      * P08e state encoding:
      *
@@ -216,10 +230,23 @@ private:
 
 public:
     /**
-     * Owner-only insertion.
+     * Appends one value at the owner end.
      *
-     * Returns false when the bounded deque is full. No allocation, resize,
-     * execution, spill or other policy action occurs.
+     * Params:
+     *   item = value to publish to the deque
+     *
+     * Returns:
+     *   `true` when published; `false` when the bounded deque is full.
+     *
+     * Failure:
+     *   A full result leaves the deque unchanged. No resize, execution, spill,
+     *   wait, or other scheduler policy occurs.
+     *
+     * Thread_Safety:
+     *   Owner-only. Exactly one thread may call `tryPush` and `pop`.
+     *
+     * Allocation:
+     *   None.
      */
     bool tryPush(T item)
         @safe @nogc nothrow
@@ -254,7 +281,20 @@ public:
         return true;
     }
 
-    /// Owner-only LIFO removal.
+    /**
+     * Removes one value from the owner end in LIFO order.
+     *
+     * Returns:
+     *   Result with `found == true` and the removed value when work was
+     *   available; otherwise `found == false`.
+     *
+     * Thread_Safety:
+     *   Owner-only. May run concurrently with thief `steal` and
+     *   `stealBatch` operations.
+     *
+     * Allocation:
+     *   None.
+     */
     WorkStealingTakeResult!T pop()
         @safe @nogc nothrow
     {
@@ -347,7 +387,20 @@ public:
         }
     }
 
-    /// Thief-safe single-item FIFO removal from the opposite end.
+    /**
+     * Attempts to remove one value from the thief end in FIFO order.
+     *
+     * Returns:
+     *   Result with `found == true` and the removed value on success;
+     *   otherwise `found == false` when no item can be claimed.
+     *
+     * Thread_Safety:
+     *   May be called concurrently by multiple thief threads and concurrently
+     *   with the single owner's operations.
+     *
+     * Allocation:
+     *   None.
+     */
     WorkStealingTakeResult!T steal()
         @safe @nogc nothrow
     {
@@ -401,10 +454,27 @@ public:
     }
 
     /**
-     * Thief-safe bounded batch steal.
+     * Attempts to steal a bounded batch into caller-owned output storage.
      *
-     * Values are written in thief/FIFO order into caller-owned output storage.
-     * No allocation or scheduler policy is performed.
+     * Values are written in thief/FIFO order starting at `output[0]`.
+     *
+     * Params:
+     *   output = caller-owned destination slice; its length limits the maximum
+     *            number of values removed
+     *
+     * Returns:
+     *   Number of values written to `output`. Zero means no batch was
+     *   available or another operation prevented this steal from claiming work.
+     *
+     * Failure:
+     *   A zero result does not modify caller output beyond its prior contents.
+     *
+     * Thread_Safety:
+     *   May be called concurrently by multiple thief threads and concurrently
+     *   with the single owner.
+     *
+     * Allocation:
+     *   None.
      */
     size_t stealBatch(
         scope T[] output)
@@ -571,6 +641,29 @@ public:
         }
 
     }
+}
+
+/// A scheduler owner keeps its newest work local while a thief takes older work.
+unittest
+{
+    WorkStealingDeque!(ulong, 8) ready;
+
+    // The owner publishes work and normally consumes the newest item itself.
+    assert(ready.tryPush(10));
+    assert(ready.tryPush(20));
+    assert(ready.tryPush(30));
+
+    auto owner = ready.pop();
+    assert(owner.found && owner.value == 30);
+
+    // A thief takes from the opposite end so older work is shared first.
+    auto thief = ready.steal();
+    assert(thief.found && thief.value == 10);
+
+    ulong[4] batch;
+    const taken = ready.stealBatch(batch[]);
+    assert(taken == 1);
+    assert(batch[0] == 20);
 }
 
 version (unittest)

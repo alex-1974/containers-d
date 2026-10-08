@@ -17,15 +17,33 @@ import core.lifetime : emplace, forward;
 import std.traits : hasIndirections, isNested, Unqual;
 
 /**
- * Reusable runtime-capacity contiguous typed buffer.
+ * Reusable contiguous work buffer for algorithms that need temporary typed
+ * storage across many processing passes.
  *
- * ScratchBuffer owns one backing allocation and exposes an exact live
- * contiguous prefix. Reset ends the live element lifetimes while retaining the
- * established backing capacity for later reuse.
+ * ScratchBuffer owns one runtime-sized backing allocation and exposes exactly
+ * the live prefix as ordinary D indexing and slicing. The usual pattern is to
+ * reserve capacity once, fill the buffer during a work phase, consume the
+ * live prefix, call `reset`, and reuse the same allocation in the next phase.
  *
- * The first public family is thread-confined. It does not provide
- * synchronization, pooling, heterogeneous arena allocation, automatic shrink,
- * or live-element reallocation.
+ * Use ScratchBuffer when capacity reuse matters but automatic container growth
+ * would hide allocation policy from the caller. The family is deliberately
+ * thread-confined. It is not a pool, arena, synchronized buffer, geometric
+ * vector, or live-content reallocator.
+ *
+ * Params:
+ *   T = element type stored in the reusable contiguous allocation
+ *
+ * Init:
+ *   `.init` is a valid empty buffer with zero capacity.
+ *
+ * Allocation:
+ *   Construction or successful empty-buffer `tryReserve` may acquire backing
+ *   storage. `tryPushBack`, indexed access, slicing, and `reset` do not grow
+ *   or reacquire storage.
+ *
+ * Thread_Safety:
+ *   Instances are not synchronized. Concurrent access requires external
+ *   synchronization.
  */
 struct ScratchBuffer(T)
 {
@@ -63,9 +81,14 @@ private:
 
 public:
     /**
-     * Establishes one backing allocation for capacity elements.
+     * Establishes backing storage for exactly the requested capacity.
      *
-     * Capacity zero is valid and produces the inert .init-equivalent state.
+     * Params:
+     *   capacity = number of element slots to allocate; zero creates the same
+     *              observable inert state as `.init`
+     *
+     * Allocation:
+     *   Positive capacity may allocate one backing block.
      */
     this(size_t capacity)
     {
@@ -90,39 +113,72 @@ public:
     /// Identity assignment is deliberately unavailable.
     @disable ref typeof(this) opAssign(ref typeof(this) rhs);
 
+    /// Ends all live element lifetimes before owned storage is released.
     ~this()
     {
         reset();
     }
 
-    /// Backing element capacity retained across reset cycles.
+    /**
+     * Returns the number of backing element slots currently owned.
+     *
+     * Returns:
+     *   Capacity retained across `reset` cycles.
+     */
     size_t capacity() const @safe @nogc nothrow
     {
         return _storage.capacity;
     }
 
-    /// Number of currently live elements.
+    /**
+     * Returns the number of currently live elements.
+     *
+     * Returns:
+     *   Length of the live contiguous prefix.
+     */
     size_t length() const @safe @nogc nothrow
     {
         return _length;
     }
 
-    /// Whether no live elements are stored.
+    /**
+     * Reports whether the live prefix is empty.
+     *
+     * Returns:
+     *   `true` when `length == 0`.
+     */
     bool empty() const @safe @nogc nothrow
     {
         return _length == 0;
     }
 
-    /// Whether the established backing capacity is fully occupied.
+    /**
+     * Reports whether every established backing slot is live.
+     *
+     * Returns:
+     *   `true` when `length == capacity`. A zero-capacity buffer is therefore
+     *   both empty and full.
+     */
     bool full() const @safe @nogc nothrow
     {
         return _length == capacity;
     }
 
     /**
-     * Mutable indexed access to one live element.
+     * Returns a mutable reference to one live element.
      *
-     * Precondition: index is less than length.
+     * Params:
+     *   index = zero-based index in the live prefix
+     *
+     * Returns:
+     *   Borrowed reference to the selected element.
+     *
+     * Preconditions:
+     *   `index < length`.
+     *
+     * Invalidation:
+     *   Successful capacity growth, whole-buffer move, or destruction
+     *   invalidates the reference.
      */
     ref T opIndex(size_t index) scope return
     {
@@ -138,11 +194,19 @@ public:
     }
 
     /**
-     * Borrows the exact live contiguous prefix.
+     * Borrows the exact live contiguous prefix as a D slice.
      *
-     * Successful structural mutation, reset, successful capacity growth,
-     * whole-buffer move, or destruction invalidates previously returned
-     * slices.
+     * Returns:
+     *   Mutable slice of the `length` live elements, or an empty slice when no
+     *   element is live.
+     *
+     * Invalidation:
+     *   Successful structural mutation, `reset`, successful capacity growth,
+     *   whole-buffer move, or destruction invalidates previously returned
+     *   slices.
+     *
+     * Allocation:
+     *   None.
      */
     pragma(inline, true)
     T[] opSlice()() scope return @trusted @nogc nothrow
@@ -158,18 +222,25 @@ public:
     }
 
     /**
-     * Ensures at least minCapacity backing slots without relocating live T.
+     * Ensures at least the requested backing capacity without relocating live
+     * elements.
      *
-     * Returns true when the current capacity already satisfies minCapacity.
+     * Params:
+     *   minCapacity = minimum number of backing slots required
      *
-     * If growth is required while live elements exist, returns false and
-     * leaves the buffer unchanged.
+     * Returns:
+     *   `true` when the current capacity already satisfies the request or when
+     *   an empty buffer was successfully grown; `false` when growth would be
+     *   required while live elements exist.
      *
-     * If growth is required while empty, replaces the backing allocation with
-     * exactly minCapacity slots. No geometric growth policy is embedded in the
-     * container.
+     * Failure:
+     *   A `false` result leaves capacity, live elements, and their addresses
+     *   unchanged. Allocation failure follows the runtime-storage fatal OOM
+     *   contract.
      *
-     * Allocation failure follows the runtime-storage fatal OOM contract.
+     * Allocation:
+     *   Growth while empty replaces the backing allocation with exactly
+     *   `minCapacity` slots. No geometric growth policy is embedded.
      */
     bool tryReserve(size_t minCapacity) @safe @nogc nothrow
     {
@@ -184,10 +255,20 @@ public:
     }
 
     /**
-     * Appends one live element when spare established capacity exists.
+     * Appends one element when established capacity has a spare slot.
      *
-     * Returns false when full. A failed insertion performs no allocation and
-     * leaves the live prefix unchanged.
+     * Params:
+     *   value = value used to construct the next live element
+     *
+     * Returns:
+     *   `true` when the value was appended; `false` when the buffer is full.
+     *
+     * Failure:
+     *   A full-buffer result performs no allocation and leaves the live prefix
+     *   unchanged.
+     *
+     * Allocation:
+     *   None by the container. Operations performed by `T` may allocate.
      */
     pragma(inline, true)
     bool tryPushBack(U)(auto ref U value)
@@ -215,9 +296,17 @@ public:
     }
 
     /**
-     * Ends all live element lifetimes while retaining backing capacity.
+     * Ends all live element lifetimes and retains the backing allocation.
      *
-     * Trivial pointer-free T specializes to an O(1) logical reset.
+     * After return, `length == 0` and `capacity` is unchanged. Previously
+     * borrowed element references and slices are invalid.
+     *
+     * Complexity:
+     *   O(1) for trivial pointer-free `T`; otherwise O(length) when element
+     *   destruction or GC-root sanitation is required.
+     *
+     * Allocation:
+     *   None.
      */
     pragma(inline, true)
     void reset()()
@@ -238,19 +327,24 @@ public:
     }
 }
 
-///
+/// Reuse one allocation across independent work phases.
 unittest
 {
     auto scratch = ScratchBuffer!int(4);
 
+    // Build temporary input for one algorithm pass.
     assert(scratch.tryPushBack(10));
     assert(scratch.tryPushBack(20));
     assert(scratch[] == [10, 20]);
 
+    // End the phase without giving the backing allocation back to the system.
     scratch.reset();
-
     assert(scratch.empty);
     assert(scratch.capacity == 4);
+
+    // The same established capacity is ready for the next phase.
+    assert(scratch.tryPushBack(30));
+    assert(scratch[] == [30]);
 }
 
 version (unittest)

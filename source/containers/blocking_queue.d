@@ -35,7 +35,10 @@ enum BlockingQueuePopStatus
 /// Result of a blocking pop operation.
 struct BlockingQueuePopResult(T)
 {
+    /// Whether this result carries a value or reports final closure.
     BlockingQueuePopStatus status;
+
+    /// Removed value when status is `value`; otherwise `T.init`.
     T value;
 
     /// Whether this result contains a queued value.
@@ -46,24 +49,45 @@ struct BlockingQueuePopResult(T)
 }
 
 /**
- * Bounded synchronized MPMC FIFO queue.
+ * Bounded synchronized FIFO for handing work from producer threads to consumer
+ * threads.
  *
- * The queue owns fixed runtime-capacity FIFO storage and synchronizes all
- * producer/consumer state through one mutex and condition variable.
+ * Use BlockingQueue when the queue has a fixed maximum size, producers must
+ * never wait for free capacity, and consumers should sleep while no work is
+ * available. A producer learns immediately whether a value was accepted, the
+ * queue is temporarily full, or the queue has been closed. A consumer waits
+ * until it can receive a value or until a closed queue has been fully drained.
  *
- * Producer admission is non-blocking: tryPush returns full instead of waiting
- * for capacity. Consumer removal is blocking: waitPop sleeps only while the
- * queue is empty and open.
+ * The queue owns runtime-capacity FIFO storage and protects the complete queue
+ * state with one mutex and one condition variable. The contract permits
+ * multiple producers and multiple consumers. It is not a lock-free queue and
+ * it does not provide scheduler, retry, timeout, cancellation, or overflow
+ * policy.
  *
- * close is idempotent. After close, new pushes are rejected, values already in
- * the queue remain drainable, and all blocked consumers are woken. waitPop
- * returns closed only after the closed queue is empty.
+ * `close` is idempotent. Closing rejects future pushes, leaves values already
+ * queued available in FIFO order, and wakes all blocked consumers. `waitPop`
+ * reports `closed` only after the queue is both closed and empty.
  *
- * The initial production contract requires copyable T. Move-only synchronized
+ * The first production contract requires copyable `T`. Move-only synchronized
  * transfer remains a separate lifetime-contract problem.
  *
- * Construction may allocate the FIFO backing storage and synchronization
- * objects. Queue operations never resize or reacquire the FIFO backing storage.
+ * Params:
+ *   T = copyable element type transferred through the queue
+ *
+ * Allocation:
+ *   Construction may allocate the RingBuffer backing storage, Mutex, Condition,
+ *   and runtime synchronization resources. `tryPush`, `waitPop`, and `close`
+ *   never resize or reacquire the FIFO backing storage.
+ *
+ * Thread_Safety:
+ *   The public operations may be called concurrently by multiple producer and
+ *   consumer threads. The queue object itself has synchronized identity and
+ *   should be shared by reference.
+ *
+ * Notes:
+ *   `length`, `empty`, `full`, and `closed` snapshots are deliberately not
+ *   part of the public API because their values may become stale immediately
+ *   after observation.
  */
 final class BlockingQueue(T)
 if (isCopyable!T)
@@ -81,7 +105,16 @@ private:
     }
 
 public:
-    /// Constructs a queue with fixed runtime capacity.
+    /**
+     * Constructs a queue with fixed runtime capacity.
+     *
+     * Params:
+     *   capacity = maximum number of queued values; zero creates a queue that
+     *              is always full until it is closed
+     *
+     * Allocation:
+     *   May allocate backing storage and synchronization objects.
+     */
     this(size_t capacity)
     {
         _mutex = new Mutex;
@@ -89,7 +122,13 @@ public:
         emplace(&_buffer, capacity);
     }
 
-    /// Fixed queue capacity selected at construction.
+    /**
+     * Returns the fixed queue capacity selected at construction.
+     *
+     * Returns:
+     *   Maximum number of queued values. The value never changes during the
+     *   queue lifetime, so callers may safely use it for configuration logic.
+     */
     @property size_t capacity()
     {
         synchronized (_mutex)
@@ -97,10 +136,23 @@ public:
     }
 
     /**
-     * Attempts one producer insertion without waiting for capacity.
+     * Attempts to append one value without waiting for free capacity.
      *
-     * Returns pushed on success, full when the open queue has no spare slot,
-     * and closed after producer admission has been closed.
+     * Params:
+     *   value = value to copy into the queue when a slot is available
+     *
+     * Returns:
+     *   `pushed` when the value was inserted, `full` when the open queue has no
+     *   spare slot, or `closed` after producer admission has been closed.
+     *
+     * Failure:
+     *   `full` and `closed` leave the queued sequence unchanged.
+     *
+     * Allocation:
+     *   Does not resize or reacquire queue backing storage.
+     *
+     * Thread_Safety:
+     *   May be called concurrently by multiple producers and consumers.
      */
     BlockingQueuePushResult tryPush(U)(auto ref U value)
     if (is(Unqual!U == T) &&
@@ -123,10 +175,23 @@ public:
     }
 
     /**
-     * Blocks until a value is available or the closed queue is fully drained.
+     * Waits for the next FIFO value or for final queue closure.
      *
-     * Spurious condition-variable wakes are harmless because the wait predicate
-     * is always re-checked in a loop.
+     * Returns:
+     *   A result with status `value` and the removed element when work is
+     *   available. Returns status `closed` with `T.init` only after `close` has
+     *   been called and every value queued before close has been drained.
+     *
+     * Blocking:
+     *   Sleeps only while the queue is empty and still open. Spurious condition
+     *   wakes are harmless because the state predicate is always re-checked in
+     *   a loop.
+     *
+     * Allocation:
+     *   Does not resize or reacquire queue backing storage.
+     *
+     * Thread_Safety:
+     *   May be called concurrently by multiple consumers and producers.
      */
     BlockingQueuePopResult!T waitPop()
     {
@@ -163,9 +228,17 @@ public:
     }
 
     /**
-     * Closes producer admission and wakes all blocked consumers.
+     * Closes producer admission and wakes every blocked consumer.
      *
-     * Returns true exactly for the first open -> closed transition.
+     * Values already queued remain available to `waitPop` in FIFO order.
+     *
+     * Returns:
+     *   `true` exactly for the first open-to-closed transition; `false` when
+     *   the queue was already closed.
+     *
+     * Thread_Safety:
+     *   May run concurrently with producers and consumers. Once the transition
+     *   succeeds, all later `tryPush` calls return `closed`.
      */
     bool close()
     {
@@ -200,6 +273,30 @@ public:
                 _notEmpty.notifyAll();
         }
     }
+}
+
+/// A bounded work handoff queue keeps producer backpressure explicit.
+unittest
+{
+    // A producer never blocks for space. The caller chooses what to do when
+    // temporary backpressure reports full.
+    auto jobs = new BlockingQueue!int(2);
+
+    assert(jobs.tryPush(10) == BlockingQueuePushResult.pushed);
+    assert(jobs.tryPush(20) == BlockingQueuePushResult.pushed);
+    assert(jobs.tryPush(30) == BlockingQueuePushResult.full);
+
+    // Closing stops new work but does not discard work already accepted.
+    assert(jobs.close);
+    assert(jobs.tryPush(40) == BlockingQueuePushResult.closed);
+
+    auto first = jobs.waitPop();
+    auto second = jobs.waitPop();
+    auto done = jobs.waitPop();
+
+    assert(first.found && first.value == 10);
+    assert(second.found && second.value == 20);
+    assert(done.status == BlockingQueuePopStatus.closed);
 }
 
 version (unittest)
