@@ -311,3 +311,24 @@ Production promotion completed through PR #64 and merged to develop as
 
 Later milestones are admitted only when their contracts, consumers, safety and
 performance gates are explicit.
+
+
+## Release v0.2.0 — release candidate
+
+Tracking: issue #66.
+
+Release checkpoints:
+
+- feature freeze: `freeze/feature-0.2.0` at
+  `d385359c5ce4b5fe8ca16a8293860860d3ca5680`;
+- API freeze: `freeze/api-0.2.0` at
+  `767e40e1ce838e1fbd75611e408fec502214ab16`;
+- API-freeze Release Gate: complete across the controlled compiler and
+  portability matrix;
+- release performance qualification: PR #68, covering StaticRingBuffer,
+  RingBuffer, StaticVector, ScratchBuffer, WorkStealingDeque, and
+  production BlockingQueue on the accepted family-specific probes.
+
+The public API is frozen. Remaining work is release metadata, exact-head
+Release Gate qualification, promotion of `release/0.2` to `main`, signed
+annotated `v0.2.0`, GitHub Release publication, and DUB registry smoke.
