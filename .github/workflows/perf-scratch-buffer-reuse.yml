@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - develop
+      - 'release/**'
     paths:
       - source/containers/scratch_buffer.d
       - source/containers/internal/runtime_storage.d

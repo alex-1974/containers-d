@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - develop
+      - 'release/**'
     paths:
       - benchmarks/static_vector_expansion_algorithm_probe.d
       - source/containers/internal/static_vector.d

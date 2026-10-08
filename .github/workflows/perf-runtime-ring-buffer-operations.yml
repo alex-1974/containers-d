@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - develop
+      - 'release/**'
     paths:
       - benchmarks/runtime_ring_buffer_operation_probe.d
       - source/containers/runtime_ring_buffer.d
