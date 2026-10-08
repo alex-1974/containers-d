@@ -1,0 +1,83 @@
+name: M7 BlockingQueue Native x86_64 Contention
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - source/containers/research/blocking_queue.d
+      - benchmarks/blocking_queue_contention_parity_probe.d
+      - .github/workflows/blocking-queue-x86-contention.yml
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  contention:
+    name: BlockingQueue contention / native x86_64 LDC 1.41
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install LDC
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ldc-1.41.0
+
+      - name: Verify qualification host
+        shell: bash
+        run: |
+          "$DC" --version
+          uname -a
+          lscpu
+          test "$(uname -m)" = "x86_64"
+          test "$(nproc)" -ge 4
+
+      - name: Build contention probe
+        shell: bash
+        run: |
+          mkdir -p build/m7-blocking-contention
+
+          "$DC" \
+            -O3 \
+            -release \
+            -boundscheck=off \
+            -Isource \
+            -of=build/m7-blocking-contention/probe \
+            benchmarks/blocking_queue_contention_parity_probe.d \
+            source/containers/research/blocking_queue.d \
+            source/containers/runtime_ring_buffer.d \
+            source/containers/internal/ring_sequence.d \
+            source/containers/internal/runtime_storage.d \
+            source/containers/internal/element_lifetime.d
+
+      - name: Run contention matrix
+        shell: bash
+        run: |
+          RESULTS=build/m7-blocking-contention/results.txt
+
+          build/m7-blocking-contention/probe | tee "$RESULTS"
+
+          # Research diagnostic only. A >25% paired-median regression is
+          # materially off-class and stops the current design path.
+          awk 'BEGIN { bad = 0 }
+               /ratio=/ {
+                 split($0, parts, "ratio=");
+                 ratio = parts[2] + 0.0;
+                 if (ratio > 1.25) bad = 1;
+               }
+               END { exit bad }' "$RESULTS"
+
+      - name: Upload evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: m7-blocking-x86-contention
+          path: build/m7-blocking-contention/results.txt
+          if-no-files-found: error
