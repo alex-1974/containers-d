@@ -131,6 +131,7 @@ public:
     /// Identity assignment remains unavailable in the first owning API.
     @disable ref typeof(this) opAssign(ref typeof(this) rhs);
 
+    /// Destroys live elements and releases the owned backing allocation.
     ~this()
     {
         clear();
