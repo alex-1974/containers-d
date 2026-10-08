@@ -770,6 +770,7 @@ public:
         assert(buffer.empty);
     }
 
+    /// Destroys every live inline element when the buffer itself is destroyed.
     ~this()
     {
         clear();
