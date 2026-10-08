@@ -1,0 +1,105 @@
+name: BlockingQueue Release Performance
+
+on:
+  pull_request:
+    branches:
+      - 'release/**'
+    paths:
+      - source/containers/blocking_queue.d
+      - source/containers/runtime_ring_buffer.d
+      - source/containers/internal/ring_sequence.d
+      - source/containers/internal/runtime_storage.d
+      - source/containers/internal/element_lifetime.d
+      - benchmarks/blocking_queue_contention_release_probe.d
+      - .github/workflows/perf-blocking-queue-release.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blocking-queue-release-perf-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contention:
+    name: BlockingQueue release contention / ${{ matrix.arch }} / LDC 1.41
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install LDC
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ldc-1.41.0
+
+      - name: Verify qualification host
+        shell: bash
+        run: |
+          "$DC" --version
+          uname -a
+          lscpu
+          test "$(uname -m)" = "${{ matrix.arch }}"
+          test "$(nproc)" -ge 4
+
+      - name: Build production contention probe
+        shell: bash
+        run: |
+          mkdir -p build/blocking-queue-release
+
+          "$DC" \
+            -O3 \
+            -release \
+            -boundscheck=off \
+            -Isource \
+            -of=build/blocking-queue-release/probe \
+            benchmarks/blocking_queue_contention_release_probe.d \
+            source/containers/blocking_queue.d \
+            source/containers/runtime_ring_buffer.d \
+            source/containers/internal/ring_sequence.d \
+            source/containers/internal/runtime_storage.d \
+            source/containers/internal/element_lifetime.d
+
+      - name: Run paired contention matrix
+        shell: bash
+        run: |
+          RESULTS=build/blocking-queue-release/results.txt
+
+          build/blocking-queue-release/probe | tee "$RESULTS"
+
+          # Same-semantics paired median guard. Ratios above 1.25 are materially
+          # outside the performance class accepted by the M7 research.
+          awk 'BEGIN { bad = 0 }
+               /ratio=/ {
+                 split($0, parts, "ratio=");
+                 ratio = parts[2] + 0.0;
+                 if (ratio > 1.25) bad = 1;
+               }
+               END { exit bad }' "$RESULTS"
+
+          {
+            echo "### BlockingQueue release contention — ${{ matrix.arch }}"
+            echo
+            echo '~~~text'
+            cat "$RESULTS"
+            echo '~~~'
+            echo
+            echo "Gate: every paired-median production/manual ratio must be <= 1.25."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: blocking-queue-release-${{ matrix.arch }}
+          path: build/blocking-queue-release/results.txt
+          if-no-files-found: error
