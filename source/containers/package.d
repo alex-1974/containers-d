@@ -7,10 +7,16 @@
  * - $(LREF StaticRingBuffer): compile-time capacity inline FIFO ring buffer;
  * - $(LREF RingBuffer): runtime capacity FIFO with one owned backing allocation;
  * - $(LREF ScratchBuffer): reusable runtime-capacity contiguous typed scratch storage;
- * - $(LREF WorkStealingDeque): bounded single-owner / multi-thief concurrent deque.
+ * - $(LREF WorkStealingDeque): bounded single-owner / multi-thief concurrent deque;
+ * - $(LREF BlockingQueue): bounded synchronized MPMC blocking FIFO.
  */
 module containers;
 
+public import containers.blocking_queue :
+    BlockingQueue,
+    BlockingQueuePopResult,
+    BlockingQueuePopStatus,
+    BlockingQueuePushResult;
 public import containers.ring_buffer : StaticRingBuffer;
 public import containers.runtime_ring_buffer : RingBuffer;
 public import containers.static_vector : StaticVector;
@@ -22,6 +28,13 @@ public import containers.work_stealing_deque :
 ///
 unittest
 {
+    auto blocking = new BlockingQueue!int(2);
+    assert(blocking.tryPush(7) == BlockingQueuePushResult.pushed);
+    assert(blocking.close);
+    auto blockingValue = blocking.waitPop();
+    assert(blockingValue.found && blockingValue.value == 7);
+    assert(blocking.waitPop().status == BlockingQueuePopStatus.closed);
+
     WorkStealingDeque!(ulong, 4) concurrent;
     assert(concurrent.tryPush(99));
     auto stolen = concurrent.steal();
