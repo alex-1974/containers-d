@@ -64,6 +64,14 @@ jobs:
         shell: bash
         run: DFLAGS="-preview=dip1000" dub run --root=tests/consumer --compiler="$DC" --force
 
+      - name: BlockingQueue consumer
+        shell: bash
+        run: dub run --root=tests/blocking-queue-consumer --compiler="$DC" --force
+
+      - name: BlockingQueue consumer with DIP1000
+        shell: bash
+        run: DFLAGS="-preview=dip1000" dub run --root=tests/blocking-queue-consumer --compiler="$DC" --force
+
       - name: StaticVector consumer
         shell: bash
         run: dub run --root=tests/static-vector-consumer --compiler="$DC" --force
