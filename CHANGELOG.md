@@ -4,7 +4,7 @@ All notable changes to `containers-d` are documented here.
 
 The project follows Semantic Versioning for published releases.
 
-## [Unreleased]
+## [0.2.0] - 2026-10-08
 
 ### Added
 
