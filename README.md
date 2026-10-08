@@ -26,6 +26,10 @@ The current unreleased development branch additionally exports:
 
 ```d
 import containers :
+    BlockingQueue,
+    BlockingQueuePopResult,
+    BlockingQueuePopStatus,
+    BlockingQueuePushResult,
     ScratchBuffer,
     StaticVector,
     WorkStealingDeque,
@@ -159,6 +163,51 @@ construction, assignment, and pass-by-value use are rejected because the
 concurrent object has identity. The hot operations are `@safe @nogc nothrow`,
 but `@safe` cannot enforce the one-owner protocol.
 
+## Blocking queue
+
+The unreleased development branch adds `BlockingQueue!T`, a bounded
+runtime-capacity synchronized FIFO for multiple producers and multiple
+consumers.
+
+```d
+import containers :
+    BlockingQueue,
+    BlockingQueuePopStatus,
+    BlockingQueuePushResult;
+
+auto queue = new BlockingQueue!int(64);
+
+assert(queue.tryPush(10) == BlockingQueuePushResult.pushed);
+
+auto item = queue.waitPop();
+assert(item.found);
+assert(item.value == 10);
+
+assert(queue.close);
+assert(queue.waitPop().status == BlockingQueuePopStatus.closed);
+```
+
+Producer admission is intentionally non-blocking. `tryPush` returns
+`pushed`, `full`, or `closed`; it never waits for free capacity.
+`waitPop` blocks only while the queue is empty and open.
+
+`close()` is idempotent. Closing rejects future pushes, preserves values
+already queued for normal FIFO draining, and wakes every blocked consumer.
+A consumer observes `closed` only after the closed queue has been fully
+drained. Condition-variable waits always re-check the state predicate, so
+spurious notifications do not alter queue semantics.
+
+The first public family accepts copyable element types. Move-only synchronized
+transfer remains deferred until its lifetime contract is independently
+qualified. Construction may allocate the fixed backing FIFO and synchronization
+objects; ordinary queue operations do not resize or reacquire FIFO backing
+storage.
+
+The initial concurrent API intentionally exposes no `length`, `empty`,
+`full`, or `closed` snapshots because such observations may become stale
+immediately. The immutable `capacity` property and operation results provide
+the actionable state contract.
+
 ## Ring buffers
 
 containers-d provides two bounded, single-threaded FIFO ring-buffer families:
@@ -249,13 +298,12 @@ stale conservative roots.
 
 The fixed- and runtime-capacity ring-buffer families are released through
 v0.1.1. The current development line additionally contains the qualified
-`StaticVector!(T, Capacity)` and `WorkStealingDeque!(T, Capacity)` families and
-is promoting the independently qualified `ScratchBuffer!T` reusable-storage
-family.
+`StaticVector!(T, Capacity)`, `ScratchBuffer!T`, and
+`WorkStealingDeque!(T, Capacity)` families and is promoting the independently
+qualified `BlockingQueue!T` bounded synchronized FIFO family.
 
 Future candidates include:
 
-- synchronized bounded queues;
 - heterogeneous Arena and BufferPool families where separately justified;
 - separately designed SPSC/MPSC/MPMC concurrent families where justified.
 
