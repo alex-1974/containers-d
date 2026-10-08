@@ -215,6 +215,45 @@ Wall-clock contention is topology/scheduler sensitive and must not be confused
 with storage abstraction cost. DMD remains a correctness/code-generation
 control; LDC is the primary optimized performance compiler for this stage.
 
+
+### Qualified Stage-2 contention result
+
+Exact-head qualification on `869b66324ce360b8f2bbc08430877d5c57f7b44c`
+passed the full native LDC 1.41 matrix on Linux x86_64 and Linux AArch64.
+
+| Capacity | Topology | x86_64 ratio | AArch64 ratio |
+| ---: | :--- | ---: | ---: |
+| 1 | 1P1C | 1.04193 | 1.10278 |
+| 1 | 2P1C | 1.02264 | 1.00253 |
+| 1 | 1P2C | 1.00215 | 0.998403 |
+| 1 | 2P2C | 0.983246 | 0.992323 |
+| 16 | 1P1C | 0.994369 | 1.02345 |
+| 16 | 2P1C | 0.964989 | 0.988433 |
+| 16 | 1P2C | 1.00422 | 1.0365 |
+| 16 | 2P2C | 1.01189 | 1.02173 |
+| 256 | 1P1C | 1.00298 | 1.0173 |
+| 256 | 2P1C | 0.891231 | 1.07998 |
+| 256 | 1P2C | 1.11398 | 1.00943 |
+| 256 | 2P2C | 0.976298 | 0.984089 |
+
+A ratio above 1.0 means the RingBuffer-backed candidate was slower than the
+manual blocking-queue baseline; below 1.0 means it was faster.
+
+All 24 measurements remain below the diagnostic 1.25 ratio. The largest
+observed candidate regressions were 1.11398 on x86_64 (capacity 256, 1P2C) and
+1.10278 on AArch64 (capacity 1, 1P1C). No topology or tested capacity moves the
+candidate into a different performance class.
+
+The same exact head also passed Fast CI, M7 correctness, storage codegen,
+storage parity, runtime-ring operation/performance, M4.4 integration, ring
+sequence factoring, and element-lifetime end/move gates.
+
+Stage 2 therefore accepts the current Mutex/Condition + RingBuffer composition
+for bounded blocking FIFO contention. Further work targets synchronization
+cost characterization rather than further RingBuffer storage optimization:
+uncontended operation cost, empty wait/wake latency, and close/wake-all
+behavior.
+
 ## Non-goals
 
 - unbounded queue;
