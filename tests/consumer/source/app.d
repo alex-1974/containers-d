@@ -1,6 +1,6 @@
 module app;
 
-import containers : RingBuffer, StaticRingBuffer;
+import containers : RingBuffer, ScratchBuffer, StaticRingBuffer, StaticVector, WorkStealingDeque, WorkStealingTakeResult;
 
 struct SafeMovable
 {
@@ -20,6 +20,69 @@ struct SafeMovable
 
 private void exerciseSafeCore() @safe @nogc nothrow
 {
+    WorkStealingDeque!(ulong, 8) work;
+    static assert(work.capacity == 8);
+
+    assert(work.tryPush(11));
+    assert(work.tryPush(22));
+
+    WorkStealingTakeResult!ulong stolen = work.steal();
+    assert(stolen.found);
+    assert(stolen.value == 11);
+
+    auto owner = work.pop();
+    assert(owner.found);
+    assert(owner.value == 22);
+
+    ulong[2] batchOutput;
+    assert(work.stealBatch(batchOutput[]) == 0);
+
+    ScratchBuffer!ubyte bytes;
+    assert(bytes.tryReserve(4096));
+
+    ubyte[4096] reference;
+    foreach (round; 0 .. 128)
+    {
+        bytes.reset();
+
+        const live = 2048 + ((round * 37 + 11) & 1023);
+        foreach (i; 0 .. live)
+        {
+            const value =
+                cast(ubyte)((round * 29 + i * 17) ^ (i >> 3));
+
+            reference[i] = value;
+            assert(bytes.tryPushBack(value));
+        }
+
+        assert(bytes.length == live);
+        assert(bytes[] == reference[0 .. live]);
+    }
+
+    ScratchBuffer!int scratch;
+    assert(scratch.tryReserve(8));
+    assert(scratch.capacity == 8);
+    assert(scratch.tryPushBack(5));
+    assert(scratch.tryPushBack(6));
+    assert(scratch[] == [5, 6]);
+    assert(!scratch.tryReserve(16));
+    scratch.reset();
+    assert(scratch.tryReserve(16));
+    assert(scratch.capacity == 16);
+    assert(scratch.empty);
+
+    StaticVector!(int, 4) vector;
+    vector.pushBack(1);
+    vector.pushBack(2);
+    assert(vector.length == 2);
+    assert(vector[] == [1, 2]);
+    vector[1] = 3;
+    assert(vector.back == 3);
+    vector.popBack();
+    assert(vector.length == 1);
+    vector.clear();
+    assert(vector.empty);
+
     StaticRingBuffer!(int, 3) buffer;
 
     assert(buffer.empty);

@@ -1,0 +1,5 @@
+name "containers-d-scratch-buffer-gc"
+description "GC reachability integration test for ScratchBuffer"
+targetType "executable"
+
+dependency "containers-d" path="../../"

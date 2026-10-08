@@ -1,0 +1,160 @@
+name: StaticVector Expansion Algorithm Probe
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - 'release/**'
+    paths:
+      - benchmarks/static_vector_expansion_algorithm_probe.d
+      - source/containers/internal/static_vector.d
+      - source/containers/internal/inline_storage.d
+      - source/containers/internal/element_lifetime.d
+      - .github/workflows/perf-static-vector-expansion-algorithm.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  instruction-counts:
+    name: Expansion Algorithm Ir / ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - dmd-2.111.0
+          - ldc-1.41.0
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ${{ matrix.compiler }}
+
+      - name: Install Callgrind
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y valgrind
+
+      - name: Build probe
+        shell: bash
+        run: |
+          mkdir -p build/perf-static-vector-algorithm
+
+          case "${{ matrix.compiler }}" in
+            dmd-*)
+              "$DC" \
+                -O \
+                -release \
+                -inline \
+                -boundscheck=off \
+                -Isource \
+                -of=build/perf-static-vector-algorithm/probe \
+                benchmarks/static_vector_expansion_algorithm_probe.d \
+                source/containers/internal/static_vector.d \
+                source/containers/internal/inline_storage.d \
+                source/containers/internal/element_lifetime.d
+              ;;
+            ldc-*)
+              "$DC" \
+                -O3 \
+                -release \
+                -boundscheck=off \
+                -Isource \
+                -of=build/perf-static-vector-algorithm/probe \
+                benchmarks/static_vector_expansion_algorithm_probe.d \
+                source/containers/internal/static_vector.d \
+                source/containers/internal/inline_storage.d \
+                source/containers/internal/element_lifetime.d
+              ;;
+          esac
+
+          "$DC" --version
+
+      - name: Verify semantic equivalence
+        shell: bash
+        run: |
+          BIN=build/perf-static-vector-algorithm/probe
+          ROUNDS=4096
+
+          baseline=$("$BIN" baseline "$ROUNDS" | awk '{print $2}')
+          candidate=$("$BIN" candidate "$ROUNDS" | awk '{print $2}')
+
+          echo "baseline=$baseline candidate=$candidate"
+          test "$baseline" = "$candidate"
+          test "$baseline" != "0"
+
+      - name: Measure retired instructions
+        shell: bash
+        run: |
+          BIN=build/perf-static-vector-algorithm/probe
+          ROUNDS=131072
+          RESULTS=build/perf-static-vector-algorithm/results.tsv
+
+          printf 'compiler\tvariant\trounds\tIr\tchecksum\n' > "$RESULTS"
+
+          measure() {
+            variant="$1"
+            symbol="bench_${variant}"
+            out="build/perf-static-vector-algorithm/callgrind-${variant}.out"
+
+            checksum=$("$BIN" "$variant" "$ROUNDS" | awk '{print $2}')
+
+            valgrind \
+              --tool=callgrind \
+              --collect-atstart=no \
+              --toggle-collect="$symbol" \
+              --callgrind-out-file="$out" \
+              "$BIN" "$variant" "$ROUNDS" \
+              >/dev/null 2>&1
+
+            ir=$(awk '/^summary:/ {print $2}' "$out")
+
+            printf '%s\t%s\t%s\t%s\t%s\n' \
+              "${{ matrix.compiler }}" \
+              "$variant" \
+              "$ROUNDS" \
+              "$ir" \
+              "$checksum" \
+              >> "$RESULTS"
+          }
+
+          measure baseline
+          measure candidate
+
+          cat "$RESULTS"
+
+          baseline_ir=$(awk -F '\t' '$2 == "baseline" {print $4}' "$RESULTS")
+          candidate_ir=$(awk -F '\t' '$2 == "candidate" {print $4}' "$RESULTS")
+
+          awk -v b="$baseline_ir" -v c="$candidate_ir" 'BEGIN {
+            delta = c - b;
+            pct = b == 0 ? 0 : delta * 100.0 / b;
+            printf "baseline Ir=%d candidate Ir=%d delta=%d (%+.6f%%)\n", b, c, delta, pct;
+          }'
+
+          {
+            echo '### ${{ matrix.compiler }} — expansion algorithm'
+            echo
+            echo '| Variant | Rounds | Ir | Checksum |'
+            echo '|---|---:|---:|---:|'
+            awk -F '\t' 'NR > 1 {
+              printf "| %s | %s | %s | %s |\n", $2, $3, $4, $5
+            }' "$RESULTS"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload probe evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: static-vector-expansion-algorithm-${{ matrix.compiler }}
+          path: |
+            build/perf-static-vector-algorithm/results.tsv
+            build/perf-static-vector-algorithm/callgrind-*.out
+          if-no-files-found: error

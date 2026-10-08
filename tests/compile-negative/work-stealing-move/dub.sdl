@@ -1,0 +1,5 @@
+name "containers-d-negative-work-stealing-move"
+description "Negative compile gate for work-stealing-move"
+targetType "executable"
+
+dependency "containers-d" path="../../../"

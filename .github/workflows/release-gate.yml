@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - main
+      - 'release/**'
   push:
     branches:
       - main
@@ -70,9 +71,42 @@ jobs:
         shell: bash
         run: dub run --root=tests/consumer --compiler="$DC" --force
 
+      - name: WorkStealingDeque native concurrent correctness
+        if: matrix.name == 'Linux ARM64 / LDC latest'
+        shell: bash
+        run: dub run --root=tests/work-stealing-correctness --compiler="$DC" --force
+
       - name: External consumer smoke with DIP1000
         shell: bash
         run: DFLAGS="-preview=dip1000" dub run --root=tests/consumer --compiler="$DC" --force
+
+      - name: BlockingQueue public consumer
+        shell: bash
+        run: dub run --root=tests/blocking-queue-consumer --compiler="$DC" --force
+
+      - name: BlockingQueue public consumer with DIP1000
+        shell: bash
+        run: DFLAGS="-preview=dip1000" dub run --root=tests/blocking-queue-consumer --compiler="$DC" --force
+
+      - name: WorkStealingDeque concurrent correctness
+        shell: bash
+        run: dub run --root=tests/work-stealing-correctness --compiler="$DC" --force
+
+      - name: WorkStealingDeque concurrent correctness with DIP1000
+        shell: bash
+        run: DFLAGS="-preview=dip1000" dub run --root=tests/work-stealing-correctness --compiler="$DC" --force
+
+      - name: StaticVector lifecycle qualification
+        shell: bash
+        run: dub run --root=tests/static-vector-lifecycle --compiler="$DC" --force
+
+      - name: StaticVector adversarial reference model
+        shell: bash
+        run: dub run --root=tests/static-vector-adversarial --compiler="$DC" --force
+
+      - name: StaticVector GC reachability
+        shell: bash
+        run: dub run --root=tests/static-vector-gc --compiler="$DC" --force
 
       - name: Runtime GC reachability
         shell: bash
@@ -87,13 +121,52 @@ jobs:
         run: |
           for root in \
             tests/compile-negative/segment-escape \
-            tests/compile-negative/runtime-segment-escape
+            tests/compile-negative/runtime-segment-escape \
+            tests/compile-negative/static-vector-slice-escape \
+            tests/compile-negative/static-vector-ref-escape
           do
             if DFLAGS="-preview=dip1000" dub build \
                 --root="$root" \
                 --compiler="$DC" \
                 --force; then
-              echo "Expected borrowed segment escape to fail under DIP1000: $root"
+              echo "Expected borrowed storage escape to fail under DIP1000: $root"
+              false
+            fi
+          done
+
+      - name: StaticVector transfer negative compile
+        shell: bash
+        run: |
+          for root in \
+            tests/compile-negative/static-vector-move-only-copy \
+            tests/compile-negative/static-vector-nontrivial-assign
+          do
+            if dub build \
+                --root="$root" \
+                --compiler="$DC" \
+                --force; then
+              echo "Expected invalid StaticVector transfer to fail: $root"
+              false
+            fi
+          done
+
+      - name: WorkStealingDeque negative compile contract
+        shell: bash
+        run: |
+          for root in \
+            tests/compile-negative/work-stealing-copy \
+            tests/compile-negative/work-stealing-assign \
+            tests/compile-negative/work-stealing-pass-by-value \
+            tests/compile-negative/work-stealing-move \
+            tests/compile-negative/work-stealing-unsupported-element \
+            tests/compile-negative/work-stealing-postblit-element \
+            tests/compile-negative/work-stealing-unshared-pointer
+          do
+            if dub build \
+                --root="$root" \
+                --compiler="$DC" \
+                --force; then
+              echo "Expected invalid WorkStealingDeque form to fail: $root"
               false
             fi
           done
@@ -102,10 +175,40 @@ jobs:
         shell: bash
         run: dub build --build=release --compiler="$DC" --force
 
-      - name: Documentation build
+      - name: Ddoc source documentation build
         if: matrix.compiler == 'dmd-2.111.0'
         shell: bash
         run: dub build --build=docs --compiler="$DC" --force
+
+      - name: DDox rendered API build
+        if: matrix.compiler == 'dmd-2.111.0'
+        shell: bash
+        run: |
+          rm -rf build/ddox-audit
+          mkdir -p build/ddox-audit
+
+          # DDox is the release renderer. The source Ddoc remains the
+          # authoritative contract; this gate verifies that the renderer can
+          # actually publish that contract.
+          dub build -b ddox --compiler="$DC" --force
+
+          find . -type f -name '*.html' -print > build/ddox-audit/html-files.txt
+          test -s build/ddox-audit/html-files.txt
+
+          for symbol in \
+            StaticRingBuffer \
+            RingBuffer \
+            StaticVector \
+            ScratchBuffer \
+            WorkStealingDeque \
+            BlockingQueue
+          do
+            if ! xargs grep -l "$symbol" < build/ddox-audit/html-files.txt \
+                > "build/ddox-audit/$symbol.txt"; then
+              echo "DDox output is missing public family: $symbol"
+              exit 1
+            fi
+          done
 
   package-gate:
     name: Release package / DMD 2.111.0
@@ -176,15 +279,48 @@ jobs:
           EOF
 
           cat > build/archive-consumer/source/app.d <<'EOF'
-          import containers : RingBuffer, StaticRingBuffer;
+          import containers :
+              BlockingQueue,
+              BlockingQueuePopStatus,
+              BlockingQueuePushResult,
+              RingBuffer,
+              ScratchBuffer,
+              StaticRingBuffer,
+              StaticVector,
+              WorkStealingDeque;
 
-          void main() @safe @nogc nothrow
+          void main()
           {
+              StaticVector!(int, 2) vector;
+              vector.pushBack(7);
+              assert(vector[] == [7]);
+
+              WorkStealingDeque!(ulong, 4) work;
+              assert(work.tryPush(9));
+              auto stolen = work.steal();
+              assert(stolen.found);
+              assert(stolen.value == 9);
+
               StaticRingBuffer!(int, 2) fixed;
               assert(fixed.tryPushBack(1));
 
               auto runtime = RingBuffer!int(2);
               assert(runtime.tryPushBack(2));
+
+              ScratchBuffer!int scratch;
+              assert(scratch.tryReserve(4));
+              assert(scratch.tryPushBack(3));
+              scratch.reset();
+              assert(scratch.capacity == 4);
+
+              auto blocking = new BlockingQueue!int(2);
+              assert(blocking.tryPush(4) == BlockingQueuePushResult.pushed);
+              assert(blocking.close);
+              auto value = blocking.waitPop();
+              assert(value.found && value.value == 4);
+              assert(
+                  blocking.waitPop().status ==
+                  BlockingQueuePopStatus.closed);
 
               assert(fixed.front + runtime.front == 3);
           }
@@ -235,6 +371,22 @@ jobs:
       - name: External consumer smoke
         shell: bash
         run: dub run --root=tests/consumer --compiler="$DC" --force
+
+      - name: BlockingQueue portability consumer
+        shell: bash
+        run: dub run --root=tests/blocking-queue-consumer --compiler="$DC" --force
+
+      - name: StaticVector lifecycle qualification
+        shell: bash
+        run: dub run --root=tests/static-vector-lifecycle --compiler="$DC" --force
+
+      - name: StaticVector adversarial reference model
+        shell: bash
+        run: dub run --root=tests/static-vector-adversarial --compiler="$DC" --force
+
+      - name: StaticVector GC reachability
+        shell: bash
+        run: dub run --root=tests/static-vector-gc --compiler="$DC" --force
 
       - name: Runtime GC reachability
         shell: bash

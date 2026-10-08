@@ -1,0 +1,5 @@
+name "containers-d-blocking-queue-consumer"
+description "External BlockingQueue public API consumer"
+targetType "executable"
+
+dependency "containers-d" path="../../"

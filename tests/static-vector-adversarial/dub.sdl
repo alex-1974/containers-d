@@ -1,0 +1,5 @@
+name "containers-d-static-vector-adversarial"
+description "Adversarial reference-model test for StaticVector"
+targetType "executable"
+
+dependency "containers-d" path="../../"

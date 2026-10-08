@@ -1,0 +1,136 @@
+name: ScratchBuffer Reuse Performance
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - 'release/**'
+    paths:
+      - source/containers/scratch_buffer.d
+      - source/containers/internal/runtime_storage.d
+      - source/containers/internal/element_lifetime.d
+      - benchmarks/scratch_buffer_reuse_probe.d
+      - .github/workflows/perf-scratch-buffer-reuse.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  retired-instructions:
+    name: ScratchBuffer reuse Ir / ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - dmd-2.111.0
+          - ldc-1.41.0
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ${{ matrix.compiler }}
+
+      - name: Install Callgrind
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y valgrind
+
+      - name: Build reuse parity probe
+        shell: bash
+        run: |
+          mkdir -p build/scratch-buffer-reuse
+
+          case "${{ matrix.compiler }}" in
+            dmd-*)
+              "$DC" \
+                -O \
+                -release \
+                -inline \
+                -boundscheck=off \
+                -Isource \
+                -of=build/scratch-buffer-reuse/probe \
+                benchmarks/scratch_buffer_reuse_probe.d \
+                source/containers/scratch_buffer.d \
+                source/containers/internal/runtime_storage.d \
+                source/containers/internal/element_lifetime.d
+              ;;
+            ldc-*)
+              "$DC" \
+                -O3 \
+                -release \
+                -boundscheck=off \
+                -Isource \
+                -of=build/scratch-buffer-reuse/probe \
+                benchmarks/scratch_buffer_reuse_probe.d \
+                source/containers/scratch_buffer.d \
+                source/containers/internal/runtime_storage.d \
+                source/containers/internal/element_lifetime.d
+              ;;
+          esac
+
+      - name: Verify semantic parity
+        shell: bash
+        run: |
+          BIN=build/scratch-buffer-reuse/probe
+          ROUNDS=4096
+          candidate=$("$BIN" candidate "$ROUNDS" | awk '{print $2}')
+          manual=$("$BIN" manual "$ROUNDS" | awk '{print $2}')
+          echo "candidate=$candidate manual=$manual"
+          test "$candidate" = "$manual"
+
+      - name: Measure retained-capacity reuse
+        shell: bash
+        run: |
+          BIN=build/scratch-buffer-reuse/probe
+          ROUNDS=65536
+          RESULTS=build/scratch-buffer-reuse/results.tsv
+          printf 'compiler\tvariant\trounds\tIr\tchecksum\n' > "$RESULTS"
+
+          measure() {
+            variant="$1"
+            symbol="$2"
+            out="build/scratch-buffer-reuse/callgrind-${variant}.out"
+            checksum=$("$BIN" "$variant" "$ROUNDS" | awk '{print $2}')
+
+            valgrind \
+              --tool=callgrind \
+              --collect-atstart=no \
+              --toggle-collect="$symbol" \
+              --callgrind-out-file="$out" \
+              "$BIN" "$variant" "$ROUNDS" \
+              >/dev/null 2>&1
+
+            ir=$(awk '/^summary:/ {print $2}' "$out")
+            printf '%s\t%s\t%s\t%s\t%s\n' \
+              "${{ matrix.compiler }}" "$variant" "$ROUNDS" "$ir" "$checksum" \
+              >> "$RESULTS"
+          }
+
+          measure candidate bench_candidate
+          measure manual bench_manual
+
+          cat "$RESULTS"
+
+          candidate=$(awk -F '\t' '$2 == "candidate" {print $4}' "$RESULTS")
+          manual=$(awk -F '\t' '$2 == "manual" {print $4}' "$RESULTS")
+
+          echo "manual Ir=$manual"
+          echo "candidate Ir=$candidate"
+          test "$candidate" = "$manual"
+
+      - name: Upload evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: scratch-buffer-reuse-${{ matrix.compiler }}
+          path: |
+            build/scratch-buffer-reuse/results.tsv
+            build/scratch-buffer-reuse/callgrind-*.out
+          if-no-files-found: error

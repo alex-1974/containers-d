@@ -1,0 +1,5 @@
+name "containers-d-negative-work-stealing-copy"
+description "Negative compile gate for work-stealing-copy"
+targetType "executable"
+
+dependency "containers-d" path="../../../"

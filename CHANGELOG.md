@@ -4,9 +4,41 @@ All notable changes to `containers-d` are documented here.
 
 The project follows Semantic Versioning for published releases.
 
-## [Unreleased]
+## [0.2.0] - 2026-10-08
 
-No unreleased changes.
+### Added
+
+- `StaticVector!(T, Capacity)`, a fixed-capacity, variable-length contiguous
+  inline vector with no backing allocation.
+- Borrowed live-prefix access through D slice syntax `vector[]`.
+- Precondition-based `pushBack` plus checked non-overwriting `tryPushBack`,
+  `popBack`, `clear`, front/back and indexed access.
+- Element-aware copy/move/destruction, GC stale-root cleanup and over-aligned
+  storage qualification for non-trivial element types.
+- Scalar specializations selected automatically at compile time to retain
+  consumer-local runtime and build/code-size quality.
+- `ScratchBuffer!T`, a reusable runtime-capacity contiguous typed scratch
+  owner with retained capacity across reset/reuse cycles.
+- Borrowed live-prefix access through `scratch[]`, explicit checked
+  `tryPushBack`, and empty-only `tryReserve` that never relocates live
+  elements.
+- Package-internal runtime-storage access factoring that preserves DMD hot-path
+  codegen while keeping allocation, alignment and GC ownership private.
+- `WorkStealingDeque!(T, Capacity)`, a bounded fixed-capacity
+  single-owner / multi-thief concurrent deque with owner `tryPush`/`pop`,
+  thief `steal`/`stealBatch`, and caller-owned batch output.
+- Explicit concurrent identity: copy, move, assignment, and pass-by-value forms
+  are rejected; `.init` is a valid empty deque.
+- `@safe @nogc nothrow` hot operations with a narrow internal ordering
+  boundary, native x86_64/AArch64 correctness qualification, and pinned P08e
+  code-generation/performance evidence.
+- `BlockingQueue!T`, a bounded runtime-capacity synchronized FIFO for
+  multiple producers and consumers, with non-blocking producer admission,
+  blocking consumer wait, and explicit `pushed`/`full`/`closed` outcomes.
+- Idempotent close-and-drain semantics for `BlockingQueue!T`: close rejects
+  future pushes, preserves already queued work, and wakes blocked consumers.
+- Native x86_64/AArch64 contention, synchronization-cost, wait/wake, and
+  close/wake-all qualification for the BlockingQueue design.
 
 ## [0.1.1] - 2026-10-07
 

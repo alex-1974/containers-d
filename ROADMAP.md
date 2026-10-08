@@ -62,30 +62,273 @@ Contract: `docs/design/runtime-ring-buffer-storage.md`.
 
 Evidence: `evidence/performance/runtime-ring-buffer-wraparound.md`.
 
-M3 is complete. The next milestone is deliberately not admitted here: choose
-between release preparation and the next container family using the normal
-issue/milestone planning process.
+M3 is complete.
 
 ## Release v0.1.0 — complete
 
-- froze the first public ring-buffer family;
-- resolved the release-relevant element-type contract for v0.1;
-- aligned stable documentation with the admitted implementation;
-- qualified the six-compiler release matrix;
-- qualified Linux ARM64, Windows x64, macOS Intel and macOS ARM64 portability;
+- released the first public ring-buffer family;
+- qualified the six-compiler and cross-platform release matrix;
 - verified the exported consumer archive;
-- prepared the qualified state for promotion to `main` and annotated tag
-  `v0.1.0`.
+- published annotated tag `v0.1.0`.
 
 Tracking: issue #21.
 
+## Release v0.1.1 — complete
+
+- corrected StaticRingBuffer over-aligned element placement on affected
+  compiler/target combinations;
+- preserved the ordinary-alignment hot path;
+- added over-alignment GC reachability and D-vs-C++ performance qualification;
+- qualified the full release matrix and exported package;
+- published signed annotated tag `v0.1.1`.
+
+Tracking: issues #31 and #32.
+
+## M4 — Consumer-driven container-family architecture — complete
+
+Tracking: issue #23.
+
+M4 derives reusable families from concrete workspace consumers rather than
+generalizing the ring buffer into a universal policy container.
+
+### M4.1 — Family model and invariants — complete research
+
+- classify storage/access/lifetime/ownership/thread-topology needs;
+- separate family semantics from reusable internal machinery;
+- keep materially different semantics as distinct public types;
+- preserve consumer-owned domain vocabulary where a wrapper would add cost.
+
+Research evidence remains on its original branches/PRs.
+
+### M4.2 — Internal lifetime/storage foundation — complete
+
+Tracking: issue #29. Promotion: PR #43.
+
+- package-internal element capability/lifetime classification;
+- typed template mixins for placement move and lifetime end;
+- structural raw-slot and reusable-slot storage contracts;
+- package-internal inline-storage proof;
+- zero-overhead qualification on DMD 2.111 and LDC 1.41;
+- no public customization API and no change to released ring semantics.
+
+### M4.3 — StaticVector proof and production promotion — complete
+
+Tracking: issues #25 and #34. Research proof: PR #33. Promotion: PR #44.
+
+Qualified research evidence:
+
+- fixed-capacity contiguous mechanics against geo-d/geo3-d ExpansionBuffer
+  baselines;
+- representative expansion-algorithm qualification;
+- real geo-d and geo3-d consumer proofs;
+- DMD hot paths instruction-identical to the consumer-local form where
+  compile-time composition is used;
+- lifecycle, GC, over-alignment, borrow and adversarial correctness evidence;
+- build/code-size qualification.
+
+Production promotion admits only the stable `StaticVector!(T, Capacity)` type.
+The research-only scalar composition mixin remains outside the compatibility
+surface.
+
+### M4.4 — Ring family factoring — complete
+
+Tracking: issue #45. Research proof: PR #46. Promotion: PR #47.
+
+Qualified evidence:
+
+- common head/length sequencing isolated without sharing storage or ownership;
+- static power-of-two, static non-power-of-two and runtime sequencing are
+  instruction-identical before/after factoring on DMD 2.111 and LDC 1.41;
+- actual StaticRingBuffer normal and over-aligned production workloads are
+  instruction-identical to develop;
+- actual RingBuffer index, push/pop, segment and mixed workloads are
+  instruction-identical at capacities 63 and 64 on both baseline compilers;
+- layout, Fast CI, GC, DIP1000, lifetime and existing runtime performance gates
+  remain qualified.
+
+Production promotion is deliberately limited to the package-internal
+`RingSequenceOps` typed mixin. StaticRingBuffer and RingBuffer retain their
+separate storage, ownership, allocation, copy/move and public semantic
+contracts.
+
+### M4.5 — Real-consumer adaptation proofs — research complete
+
+Tracking: issue #49.
+
+Qualified adaptation modes:
+
+- numeric/domain-owned workspaces use StaticVector only where its semantics
+  match; caller-owned slice APIs remain first-class where ownership belongs to
+  the caller;
+- synchronized bounded mailboxes are a separate semantic family layered over
+  bounded FIFO storage, not a thread-safety mode of RingBuffer;
+- reusable contiguous scratch, heterogeneous arenas and cross-thread buffer
+  pools are distinct ownership/lifetime families rather than storage-policy
+  switches.
+
+The M4.5 evidence finds no need for a universal public customization surface.
+See `docs/research/m4-5-consumer-adaptation.md`.
+
+### M4.6 — Public customization decision — complete
+
+Tracking: issue #52.
+
+Decision:
+
+- no advanced public customization/policy framework is exposed;
+- concrete semantic families remain the public API;
+- templates, traits, static if, typed mixins and compiler/architecture
+  capability selection remain package-internal implementation mechanisms;
+- public customization may be reconsidered only after multiple real consumers
+  require the same semantic family with incompatible private backend needs and
+  the diagnostics/build-cost/performance gates are qualified.
+
+Decision record: `docs/design/public-customization-decision.md`.
+
+M4 exits with concrete production families and qualified internal composition,
+not a universal framework.
+
+## M5 — Work-stealing deque family — complete
+
+Tracking: issues #38 and #39. Research evidence: PR #54. Promotion: PR #55.
+
+Qualified research result:
+
+- bounded fixed power-of-two capacity;
+- exactly one owner and zero or more thieves;
+- P08e 63-bit marked-top protocol;
+- owner `tryPush`/`pop`;
+- thief `steal`/`stealBatch`;
+- caller-owned batch output;
+- trivial atomically shared-compatible transport values;
+- non-copyable/non-movable concurrent identity;
+- `@safe @nogc nothrow` callable hot operations with one narrow trusted
+  sequential-consistency barrier;
+- exact last-item, multi-thief, near-capacity, wrap and forced marked-top
+  overlap correctness;
+- native Linux x86_64 and native Linux AArch64 qualification;
+- exact DMD/LDC retired-instruction parity against the pinned immutable P08e
+  reference;
+- exact normalized LDC AArch64 instruction-stream parity;
+- balanced four-physical-core AArch64 contention parity with no material
+  regression.
+
+Production promotion exposes only the scheduler-independent container family.
+PR #55 merged the qualified family to develop as
+`030065bcc7030a1cae0d8ba7502f95a46e8546ce`.
+
+concurrency-d remains an external read-only reference/consumer in this
+repository; downstream adoption is a separate concurrency-d project decision.
+
+No public size/empty/full snapshot is admitted in the first API.
+
+## M6 — Reusable contiguous scratch storage — complete
+
+Research tracking: issue #27. Research evidence: PR #58.  
+Production tracking: issue #59.
+
+Qualified research result:
+
+- one uniquely owned contiguous typed backing allocation;
+- inert zero-capacity `.init`;
+- runtime capacity and exact live prefix;
+- borrowed live slice;
+- reset retains capacity and performs no backing reallocation;
+- trivial pointer-free reset specializes to O(1);
+- whole-owner move transfers storage without relocating live elements;
+- empty-only `tryReserve` can increase capacity between work phases;
+- reserve never copies/moves live T and embeds no geometric growth policy;
+- alignment and GC-visible external-storage behavior reuse the qualified runtime
+  ownership machinery;
+- package-internal `RuntimeStorageAccessOps` restores exact DMD hot-path parity
+  without exposing storage policy;
+- retained-capacity DMD 2.111 reuse path is instruction-identical to a direct
+  manual preallocated-array + logical-length baseline;
+- LDC 1.41 optimized code is equal;
+- DCanvas-like, geometry-like and OSM/raster-like profiles remain in the same
+  performance class as manual equivalents.
+
+Architecture decision:
+
+- promote `ScratchBuffer!T` as a concrete public family;
+- do not promote public UniqueBuffer now (#26 closed not planned);
+- keep Arena, BufferPool and live-content growth separate/deferred;
+- keep mathematical/caller-workspace algorithm APIs slice-based;
+- no consumer repository migration is part of this promotion.
+
+Production promotion completed through PR #60 and merged to develop as
+`6b8df935417c1d095df15e24c886b4863f0416ae`.
+
+## M7 — Bounded BlockingQueue over ring storage — complete
+
+Research tracking: issue #28. Research evidence: PR #62.  
+Production tracking: issue #63. Promotion: PR #64.
+
+Qualified research result:
+
+- separate synchronized family rather than a thread-safety policy on RingBuffer;
+- fixed runtime capacity backed by the qualified `RingBuffer!T` family;
+- one mutex + condition variable with MPMC semantics under that mutex;
+- non-blocking producer admission with explicit `pushed`, `full`, and
+  `closed` outcomes;
+- blocking consumer with explicit value/closed result;
+- idempotent close, close-and-drain, and wake-all semantics;
+- predicate-loop protection against spurious condition-variable wakes;
+- first element contract restricted to copyable `T`;
+- no operation-time FIFO backing reallocation after construction;
+- fair storage parity on DMD 2.111 and LDC 1.41;
+- native LDC x86_64 and AArch64 contention qualification across capacities
+  1, 16, and 256 and 1P1C/2P1C/1P2C/2P2C topologies;
+- uncontended synchronization, wait/wake, and close/wake-all measurements in
+  the same performance class as the equivalent manual Mutex/Condition queue.
+
+Production promotion admits only the stable bounded blocking FIFO contract:
+
+- `BlockingQueue!T`;
+- `BlockingQueuePushResult`;
+- `BlockingQueuePopResult!T` / `BlockingQueuePopStatus`;
+- immutable `capacity`;
+- `tryPush`, `waitPop`, and `close`.
+
+The first public API deliberately omits immediately stale concurrent
+`length`/`empty`/`full`/`closed` snapshots. Move-only synchronized
+transfer and explicit destruction while active waiters exist remain deferred
+research questions.
+
+Consumer repositories remain read-only evidence sources; no DCanvas or
+raster-d migration is part of this promotion.
+
+Production promotion completed through PR #64 and merged to develop as
+`2662a97b09b6aa619d150c727af13fc85852fea3`.
+
 ## Later candidates
 
-- FIFO queues;
-- LIFO/FILO stacks;
-- deque-like structures where justified;
-- SPSC ring buffers;
-- other bounded container primitives.
+- Arena / BufferPool as separate families where consumer evidence justifies
+  them;
+- public UniqueBuffer only if future consumers require direct transferable
+  contiguous ownership as an observable contract;
+- other explicitly concurrent SPSC/MPSC/MPMC families.
 
-Later milestones are admitted only when their contracts and consumer need are
-clear.
+Later milestones are admitted only when their contracts, consumers, safety and
+performance gates are explicit.
+
+
+## Release v0.2.0 — release candidate
+
+Tracking: issue #66.
+
+Release checkpoints:
+
+- feature freeze: `freeze/feature-0.2.0` at
+  `d385359c5ce4b5fe8ca16a8293860860d3ca5680`;
+- API freeze: `freeze/api-0.2.0` at
+  `767e40e1ce838e1fbd75611e408fec502214ab16`;
+- API-freeze Release Gate: complete across the controlled compiler and
+  portability matrix;
+- release performance qualification: PR #68, covering StaticRingBuffer,
+  RingBuffer, StaticVector, ScratchBuffer, WorkStealingDeque, and
+  production BlockingQueue on the accepted family-specific probes.
+
+The public API is frozen. Remaining work is release metadata, exact-head
+Release Gate qualification, promotion of `release/0.2` to `main`, signed
+annotated `v0.2.0`, GitHub Release publication, and DUB registry smoke.

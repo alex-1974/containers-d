@@ -5,19 +5,43 @@
  */
 module containers.runtime_ring_buffer;
 
+import containers.internal.element_lifetime :
+    EndElementLifetimeOps,
+    PlacementMoveOps;
+import containers.internal.ring_sequence : RingSequenceOps;
 import containers.internal.runtime_storage : RuntimeStorageOwner;
 import core.lifetime : emplace, forward;
-import std.traits : hasElaborateDestructor, hasIndirections, isNested, Unqual;
+import std.traits : hasIndirections, isNested, Unqual;
 
 /**
- * Owning bounded FIFO ring buffer with runtime-selected capacity.
+ * Owning bounded FIFO for queues whose capacity is chosen at runtime.
  *
- * The backing storage is acquired once at construction and retained across
- * push/pop/clear operations. Exactly length slots contain live T objects.
+ * RingBuffer is useful when a caller needs a fixed maximum queue size but
+ * cannot know that size at compile time. It acquires one backing allocation,
+ * preserves FIFO order across physical wraparound, and exposes the logical
+ * sequence as at most two contiguous borrowed segments for bulk processing.
+ *
+ * The backing storage is acquired once and retained across push, pop, and
+ * clear operations. Exactly `length` slots contain live `T` objects. The
+ * container never overwrites old elements when full.
  *
  * Copy construction is disabled because backing storage is uniquely owned.
  * Whole-buffer move transfers ownership in O(1) without relocating live
  * elements.
+ *
+ * Params:
+ *   T = element type
+ *
+ * Init:
+ *   `.init` is a valid empty zero-capacity buffer.
+ *
+ * Allocation:
+ *   Positive construction may acquire one backing allocation. Steady-state
+ *   push, pop, indexing, segment access, and clear do not reacquire storage.
+ *
+ * Thread_Safety:
+ *   Instances are not synchronized. External synchronization is required for
+ *   concurrent mutation or mutation concurrent with reads.
  */
 struct RingBuffer(T)
 {
@@ -27,9 +51,11 @@ struct RingBuffer(T)
         "RingBuffer v0.1 does not support nested/local struct element types with hidden context/indirections");
 
 private:
+    mixin PlacementMoveOps!T;
+    mixin EndElementLifetimeOps!T;
+
     RuntimeStorageOwner!T _storage;
-    size_t _head;
-    size_t _length;
+    mixin RingSequenceOps;
 
     ref T borrowedSlot(
         size_t physicalIndex) scope return @trusted
@@ -61,77 +87,22 @@ private:
         return _storage.slotSlice(physicalStart, count);
     }
 
-    enum bool safeLanguageMove = __traits(compiles, {
-        void probe(ref T source) @safe
-        {
-            T target = __rvalue(source);
-        }
-    });
-
-    static if (__traits(hasMoveConstructor, T))
-    {
-        static if (safeLanguageMove)
-        {
-            T* placementMoveConstruct(
-                T* target,
-                ref T source) @trusted
-            {
-                // target is aligned unused storage owned by this RingBuffer,
-                // and T's language move construction is independently @safe.
-                return new (*target) T(__rvalue(source));
-            }
-        }
-        else
-        {
-            T* placementMoveConstruct(
-                T* target,
-                ref T source) @system
-            {
-                return new (*target) T(__rvalue(source));
-            }
-        }
-    }
-
-    size_t physicalIndex(size_t logicalIndex) const @safe @nogc nothrow
-    {
-        assert(logicalIndex < capacity);
-        assert(capacity != 0);
-        assert(_head < capacity);
-
-        // Overflow-safe for every representable runtime capacity. M3.3 will
-        // benchmark alternative runtime wraparound shapes before specializing.
-        const tailRoom = capacity - _head;
-
-        if (logicalIndex < tailRoom)
-            return _head + logicalIndex;
-
-        return logicalIndex - tailRoom;
-    }
-
     void endSlotLifetime(size_t physicalIndex)
     {
-        static if (hasElaborateDestructor!T)
-            destroy!false(*_storage.slotPointer(physicalIndex));
-
+        endElementLifetime(_storage.slotPointer(physicalIndex));
         _storage.clearVacatedSlot(physicalIndex);
-    }
-
-    void advanceHead() @safe @nogc nothrow
-    {
-        assert(capacity != 0);
-        assert(_head < capacity);
-
-        ++_head;
-        if (_head == capacity)
-            _head = 0;
     }
 
 public:
     /**
-     * Acquires backing storage for capacity elements.
+     * Acquires backing storage for the requested number of elements.
      *
-     * Capacity zero is valid and produces the same observable inert state as
-     * .init.
+     * Params:
+     *   capacity = maximum number of live elements; zero produces the same
+     *              observable inert state as `.init`
+     *
+     * Allocation:
+     *   Positive capacity may allocate one backing block.
      */
     this(size_t capacity)
     {
@@ -160,30 +131,52 @@ public:
     /// Identity assignment remains unavailable in the first owning API.
     @disable ref typeof(this) opAssign(ref typeof(this) rhs);
 
+    /// Destroys live elements and releases the owned backing allocation.
     ~this()
     {
         clear();
     }
 
-    /// Maximum number of live elements.
+    /**
+     * Returns the maximum number of live elements.
+     *
+     * Returns:
+     *   Runtime capacity selected at construction.
+     */
     size_t capacity() const @safe @nogc nothrow
     {
         return _storage.capacity;
     }
 
-    /// Number of live elements.
+    /**
+     * Returns the number of live elements.
+     *
+     * Returns:
+     *   Current logical FIFO length.
+     */
     size_t length() const @safe @nogc nothrow
     {
         return _length;
     }
 
-    /// Whether no live elements are stored.
+    /**
+     * Reports whether the buffer contains no live elements.
+     *
+     * Returns:
+     *   `true` when `length == 0`.
+     */
     bool empty() const @safe @nogc nothrow
     {
         return _length == 0;
     }
 
-    /// Whether no additional element can be inserted.
+    /**
+     * Reports whether no additional element can be inserted.
+     *
+     * Returns:
+     *   `true` when `length == capacity`. A zero-capacity buffer is both
+     *   empty and full.
+     */
     bool full() const @safe @nogc nothrow
     {
         return _length == capacity;
@@ -226,9 +219,16 @@ public:
     }
 
     /**
-     * Mutable logical indexed access independent of physical wraparound.
+     * Returns a mutable reference by logical FIFO index.
      *
-     * Precondition: logicalIndex is less than length.
+     * Params:
+     *   logicalIndex = zero-based position in FIFO order
+     *
+     * Returns:
+     *   Borrowed reference to the selected live element.
+     *
+     * Preconditions:
+     *   `logicalIndex < length`.
      */
     ref T opIndex(size_t logicalIndex) scope return
     {
@@ -305,8 +305,18 @@ public:
     /**
      * Appends one element without overwriting existing contents.
      *
-     * Returns false when full. A failed insertion leaves the logical sequence
-     * unchanged.
+     * Params:
+     *   value = value used to construct the new logical back element
+     *
+     * Returns:
+     *   `true` when inserted; `false` when the buffer is already full.
+     *
+     * Failure:
+     *   A full-buffer result leaves the logical sequence unchanged and performs
+     *   no element construction.
+     *
+     * Allocation:
+     *   No backing-storage allocation is performed.
      *
      * Lvalues use the ordinary `core.lifetime.emplace` construction path.
      * For an exact T rvalue whose type defines a D language move constructor,
@@ -341,7 +351,15 @@ public:
     /**
      * Destroys and removes the logical front element.
      *
-     * Precondition: the buffer is not empty.
+     * Preconditions:
+     *   The buffer is not empty.
+     *
+     * Effects:
+     *   Decreases `length` by one and invalidates previously borrowed segment
+     *   slices.
+     *
+     * Allocation:
+     *   None.
      */
     void popFront()
     {
@@ -350,16 +368,18 @@ public:
         const physical = _head;
         endSlotLifetime(physical);
 
-        --_length;
-
-        if (_length == 0)
-            _head = 0;
-        else
-            advanceHead();
+        consumeFrontState();
     }
 
     /**
      * Destroys all live elements while retaining the backing allocation.
+     *
+     * Effects:
+     *   Leaves the buffer empty with unchanged capacity and invalidates all
+     *   previously borrowed element references and segment slices.
+     *
+     * Allocation:
+     *   None.
      */
     void clear()
     {
@@ -368,14 +388,21 @@ public:
     }
 }
 
-///
+/// Reuse one runtime-sized FIFO allocation across normal queue operations.
 unittest
 {
     auto queue = RingBuffer!int(4);
+
+    // Filling and draining the queue never changes its established capacity.
     assert(queue.tryPushBack(10));
     assert(queue.tryPushBack(20));
     queue.popFront();
     assert(queue.front == 20);
+    assert(queue.capacity == 4);
+
+    // Clear removes live values but keeps the backing allocation for reuse.
+    queue.clear();
+    assert(queue.empty);
     assert(queue.capacity == 4);
 }
 
