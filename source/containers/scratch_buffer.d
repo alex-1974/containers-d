@@ -113,6 +113,7 @@ public:
     /// Identity assignment is deliberately unavailable.
     @disable ref typeof(this) opAssign(ref typeof(this) rhs);
 
+    /// Ends all live element lifetimes before owned storage is released.
     ~this()
     {
         reset();
