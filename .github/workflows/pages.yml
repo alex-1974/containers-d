@@ -1,0 +1,102 @@
+name: API documentation
+
+on:
+  push:
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - .github/workflows/pages.yml
+      - tools/build-versioned-docs.sh
+      - RELEASING.md
+      - .gitattributes
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release tag to publish, for example v0.2.0
+        required: true
+        default: v0.2.0
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build stable DDox documentation
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out repository and release tags
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Install release documentation compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: dmd-2.111.0
+          dub: 1.40.0
+
+      - name: Select release tag
+        id: version
+        shell: bash
+        env:
+          DISPATCH_VERSION: ${{ inputs.version }}
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            version="$GITHUB_REF_NAME"
+          elif [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            version="$DISPATCH_VERSION"
+          else
+            version="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n 1)"
+          fi
+
+          case "$version" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *)
+              echo "Invalid documentation release tag: $version" >&2
+              exit 1
+              ;;
+          esac
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build versioned stable documentation
+        shell: bash
+        run: bash tools/build-versioned-docs.sh "${{ steps.version.outputs.version }}"
+
+      - name: Configure GitHub Pages
+        if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@v5
+
+      - name: Upload GitHub Pages artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: build/versioned-docs/site
+
+  deploy:
+    name: Deploy stable documentation
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-24.04
+
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

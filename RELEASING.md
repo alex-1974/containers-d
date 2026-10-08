@@ -139,3 +139,27 @@ The release is complete only after that registry-backed consumer succeeds.
 After publication, forward-integrate the release result to `develop` if the
 release branch contains commits not already present there. Do not merge the
 release line wholesale in a way that obscures later development history.
+
+
+## Stable API documentation
+
+Stable API documentation is published to GitHub Pages from qualified release
+tags, not from the moving `develop` branch.
+
+The Pages workflow:
+
+1. resolves an explicit `vMAJOR.MINOR.PATCH` release tag;
+2. extracts that immutable tagged source tree;
+3. builds the rendered DDox API documentation with the release documentation
+   compiler baseline;
+4. verifies that all six published container families appear in the rendered
+   HTML;
+5. publishes both the stable root and a versioned
+   `/<release-tag>/` documentation tree.
+
+For a newly created release tag the workflow runs automatically once this
+workflow is part of that tagged release. For the already-published v0.2.0
+bootstrap, dispatch `pages.yml` manually with `version=v0.2.0`.
+
+Post-release verification must confirm that the Pages URL is reachable and
+serves documentation generated from the intended release tag.
