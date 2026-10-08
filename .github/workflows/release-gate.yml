@@ -70,10 +70,6 @@ jobs:
         shell: bash
         run: dub run --root=tests/consumer --compiler="$DC" --force
 
-      - name: BlockingQueue portability consumer
-        shell: bash
-        run: dub run --root=tests/blocking-queue-consumer --compiler="$DC" --force
-
       - name: WorkStealingDeque native concurrent correctness
         if: matrix.name == 'Linux ARM64 / LDC latest'
         shell: bash
@@ -198,9 +194,16 @@ jobs:
           find . -type f -name '*.html' -print > build/ddox-audit/html-files.txt
           test -s build/ddox-audit/html-files.txt
 
-          for symbol in             StaticRingBuffer RingBuffer StaticVector ScratchBuffer             WorkStealingDeque BlockingQueue
+          for symbol in \
+            StaticRingBuffer \
+            RingBuffer \
+            StaticVector \
+            ScratchBuffer \
+            WorkStealingDeque \
+            BlockingQueue
           do
-            if ! xargs grep -l "$symbol" < build/ddox-audit/html-files.txt                 > "build/ddox-audit/$symbol.txt"; then
+            if ! xargs grep -l "$symbol" < build/ddox-audit/html-files.txt \
+                > "build/ddox-audit/$symbol.txt"; then
               echo "DDox output is missing public family: $symbol"
               exit 1
             fi
@@ -367,6 +370,10 @@ jobs:
       - name: External consumer smoke
         shell: bash
         run: dub run --root=tests/consumer --compiler="$DC" --force
+
+      - name: BlockingQueue portability consumer
+        shell: bash
+        run: dub run --root=tests/blocking-queue-consumer --compiler="$DC" --force
 
       - name: StaticVector lifecycle qualification
         shell: bash
