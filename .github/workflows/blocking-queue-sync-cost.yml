@@ -46,7 +46,7 @@ jobs:
           uname -a
           lscpu
           test "$(uname -m)" = "${{ matrix.arch }}"
-          test "$(nproc)" -ge 2
+          test "$(nproc)" -ge 4
 
       - name: Build synchronization-cost probe
         shell: bash
@@ -54,6 +54,7 @@ jobs:
           mkdir -p build/m7-blocking-sync
 
           "$DC" \
+            --d-version=ContainersBlockingQueueResearchProbe \
             -O3 \
             -release \
             -boundscheck=off \
