@@ -154,9 +154,12 @@ struct WorkStealingDeque(T, size_t Capacity)
 
     /// Compile-time maximum number of queued elements.
     enum size_t capacity = Capacity;
-    enum size_t mask = Capacity - 1;
 
 private:
+    // Slot masking is an implementation detail of the power-of-two storage
+    // layout. Keeping it private avoids turning the chosen index arithmetic
+    // into a caller-visible compatibility promise.
+    enum size_t mask = Capacity - 1;
     /*
      * P08e state encoding:
      *
