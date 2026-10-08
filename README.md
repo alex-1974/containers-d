@@ -2,7 +2,7 @@
 
 High-performance generic container primitives for D.
 
-Current release: `v0.1.1`.
+Current release: `v0.2.0`.
 
 The 0.x line is the API-stabilization period. Minor 0.x releases may make
 breaking public-API changes when required by evidence; patch releases should
@@ -13,16 +13,10 @@ not intentionally break source compatibility.
 Install the published package through the DUB registry:
 
 ```bash
-dub add containers-d@0.1.1
+dub add containers-d@0.2.0
 ```
 
-The published v0.1.1 package root contains the ring-buffer family:
-
-```d
-import containers : RingBuffer, StaticRingBuffer;
-```
-
-The current unreleased development branch additionally exports:
+The published v0.2.0 package root exports the complete qualified family set:
 
 ```d
 import containers :
@@ -30,7 +24,9 @@ import containers :
     BlockingQueuePopResult,
     BlockingQueuePopStatus,
     BlockingQueuePushResult,
+    RingBuffer,
     ScratchBuffer,
+    StaticRingBuffer,
     StaticVector,
     WorkStealingDeque,
     WorkStealingTakeResult;
@@ -45,7 +41,7 @@ Minimum supported D frontend:
 ```
 
 Normal development is continuously checked with DMD 2.111 and LDC 1.41. The
-v0.1 release gate additionally qualifies DMD 2.112/2.113 and LDC 1.42/1.43 and
+v0.2 release gate additionally qualifies DMD 2.112/2.113 and LDC 1.42/1.43 and
 runs portability jobs on Linux, Windows and macOS.
 
 Sequential container families remain unsynchronized. Concurrent semantics are
@@ -55,9 +51,8 @@ hidden context/lifetime contract is not qualified; issue #10 owns that research.
 
 ## Static vector
 
-The unreleased development branch adds `StaticVector!(T, Capacity)`: a
-compile-time fixed-capacity, runtime-length contiguous vector with inline
-storage and no backing allocation.
+`StaticVector!(T, Capacity)` is a compile-time fixed-capacity, runtime-length
+contiguous vector with inline storage and no backing allocation.
 
 ```d
 import containers : StaticVector;
@@ -86,8 +81,8 @@ implementation details, not public policy parameters.
 
 ## Scratch buffer
 
-The unreleased development branch adds `ScratchBuffer!T`, a reusable
-runtime-capacity contiguous typed buffer for temporary work storage.
+`ScratchBuffer!T` is a reusable runtime-capacity contiguous typed buffer for
+temporary work storage.
 
 ```d
 import containers : ScratchBuffer;
@@ -120,8 +115,7 @@ customization remain outside this API.
 
 ## Work-stealing deque
 
-The unreleased development branch adds
-`WorkStealingDeque!(T, Capacity)`, a bounded fixed-capacity concurrent deque
+`WorkStealingDeque!(T, Capacity)` is a bounded fixed-capacity concurrent deque
 for exactly one owner and zero or more thief threads.
 
 ```d
@@ -165,9 +159,8 @@ but `@safe` cannot enforce the one-owner protocol.
 
 ## Blocking queue
 
-The unreleased development branch adds `BlockingQueue!T`, a bounded
-runtime-capacity synchronized FIFO for multiple producers and multiple
-consumers.
+`BlockingQueue!T` is a bounded runtime-capacity synchronized FIFO for multiple
+producers and multiple consumers.
 
 ```d
 import containers :
@@ -296,9 +289,8 @@ stale conservative roots.
 
 ## Direction
 
-The fixed- and runtime-capacity ring-buffer families are released through
-v0.1.1. The current development line additionally contains the qualified
-`StaticVector!(T, Capacity)`, `ScratchBuffer!T`,
+v0.2.0 publishes the qualified `StaticRingBuffer!(T, Capacity)`,
+`RingBuffer!T`, `StaticVector!(T, Capacity)`, `ScratchBuffer!T`,
 `WorkStealingDeque!(T, Capacity)`, and `BlockingQueue!T` families.
 
 Future candidates include:
