@@ -22,9 +22,8 @@ import containers.internal.static_vector :
  * spare capacity exists. `tryPushBack` performs the checked form. The vector
  * never grows beyond `Capacity`.
  *
- * Params:
- *   T = element type
- *   Capacity = compile-time maximum number of live elements; greater than zero
+ * The alias takes an element type and a compile-time maximum element count.
+ * Capacity must be greater than zero.
  *
  * Init:
  *   `.init` is a valid empty vector.
