@@ -262,7 +262,7 @@ Production promotion completed through PR #60 and merged to develop as
 ## M7 — Bounded BlockingQueue over ring storage — production promotion current
 
 Research tracking: issue #28. Research evidence: PR #62.  
-Production tracking: issue #63.
+Production tracking: issue #63. Promotion: PR #64.
 
 Qualified research result:
 
