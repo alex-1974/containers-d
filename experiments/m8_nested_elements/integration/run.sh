@@ -24,6 +24,7 @@ esac
 modes=(
     PublicContractProbe
     InternalStorageProbe
+    InternalDirectPlacementProbe
     InternalEmplaceProbe
     InternalPlacementMoveProbe
     StaticControlProbe
@@ -33,7 +34,9 @@ results="$out_dir/results.txt"
 : > "$results"
 
 printf 'compiler=%s\n' "$compiler" | tee -a "$results"
-"$compiler" --version 2>&1 | head -n 3 | sed 's/^/compiler-version: /' | tee -a "$results"
+version_log="$out_dir/logs/compiler-version.txt"
+"$compiler" --version >"$version_log" 2>&1
+sed -n '1,3p' "$version_log" | sed 's/^/compiler-version: /' | tee -a "$results"
 printf '\n' | tee -a "$results"
 
 required_modes=(
