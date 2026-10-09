@@ -145,15 +145,15 @@ jobs:
       - name: Nested element negative compile contract
         shell: bash
         run: |
-          for root in \\
-            tests/compile-negative/static-ring-nested-element \\
-            tests/compile-negative/static-vector-nested-element \\
-            tests/compile-negative/runtime-ring-nested-element \\
+          for root in \
+            tests/compile-negative/static-ring-nested-element \
+            tests/compile-negative/static-vector-nested-element \
+            tests/compile-negative/runtime-ring-nested-element \
             tests/compile-negative/scratch-buffer-nested-element
           do
-            if dub build \\
-                --root="$root" \\
-                --compiler="$DC" \\
+            if dub build \
+                --root="$root" \
+                --compiler="$DC" \
                 --force; then
               echo "Expected nested/context-bearing element rejection: $root"
               false
