@@ -7,7 +7,7 @@ root="$(
 )"
 cd "$root"
 
-compiler="${DMD:-${DC:-dmd}}"
+compiler="${DC:-dmd}"
 out_dir="${1:-build/research/m8-nested-elements}"
 mkdir -p "$out_dir/bin" "$out_dir/logs"
 
@@ -42,8 +42,24 @@ for probe in "${probes[@]}"; do
 
         printf '=== %s / %s ===\n' "$probe" "$mode" | tee -a "$results"
 
+        compiler_name="$(basename "$compiler")"
+
+        case "$compiler_name" in
+            ldc2|ldmd2)
+                version_flag="--d-version=$mode"
+                ;;
+            *)
+                version_flag="-version=$mode"
+                ;;
+        esac
+
         set +e
-        "$compiler"             -g             "-version=$mode"             "-of=$exe"             "$src"             >"$compile_log" 2>&1
+        "$compiler" \
+            -g \
+            "$version_flag" \
+            "-of=$exe" \
+            "$src" \
+            >"$compile_log" 2>&1
         status=$?
         set -e
 
