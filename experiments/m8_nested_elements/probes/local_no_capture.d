@@ -9,6 +9,17 @@ version (TraitsProbe)
         struct LocalValue
         {
             int value;
+
+            this(int value)
+            {
+                this.value = value;
+            }
+
+            this(return scope LocalValue rhs)
+            {
+                value = rhs.value;
+                rhs.value = -1;
+            }
         }
 
         writeln(
