@@ -27,8 +27,8 @@ struct RingBuffer(T)
 {
     static assert(T.sizeof > 0,
         "RingBuffer requires an element type with non-zero size");
-    static assert(!(is(T == struct) && isNested!T && hasIndirections!T),
-        "RingBuffer v0.1 does not support nested/local struct element types with hidden context/indirections");
+    static assert(!(is(T == struct) && isNested!T),
+        "RingBuffer does not support nested/context-bearing struct element types");
 
 private:
     mixin PlacementMoveOps!T;
