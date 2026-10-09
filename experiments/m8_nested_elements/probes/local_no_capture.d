@@ -1,6 +1,6 @@
 module m8_local_no_capture_probe;
 
-import std.stdio : writeln;
+import std.stdio : stdout, writeln;
 
 version (TraitsProbe)
 {
@@ -80,6 +80,7 @@ else version (PlacementMoveProbe)
             " target.value=", placed.value,
             " same-address=", placed is target);
 
+        stdout.flush();
         destroy!false(*placed);
     }
 }
