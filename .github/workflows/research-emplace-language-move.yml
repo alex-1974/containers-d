@@ -1,0 +1,68 @@
+name: Emplace Language Move Research
+
+on:
+  push:
+    branches:
+      - research/move-constructor-elements
+    paths:
+      - experiments/emplace_language_move/**
+      - .github/workflows/research-emplace-language-move.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Emplace move / ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - dmd-2.111.0
+          - dmd-2.112.1
+          - dmd-2.113.0
+          - ldc-1.41.0
+          - ldc-1.42.0
+          - ldc-1.43.0
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ${{ matrix.compiler }}
+          dub: 1.40.0
+
+      - name: Compiler identity
+        shell: bash
+        run: |
+          echo "DC=$DC"
+          "$DC" --version
+          dub --version
+
+      - name: Build probe
+        shell: bash
+        run: |
+          mkdir -p build/research
+          "$DC" \
+            -g \
+            -checkaction=context \
+            -of=build/research/emplace-language-move \
+            experiments/emplace_language_move/probe.d
+
+      - name: Run probe
+        shell: bash
+        run: |
+          build/research/emplace-language-move | tee build/research/results.txt
+
+      - name: Upload results
+        uses: actions/upload-artifact@v7
+        with:
+          name: emplace-language-move-${{ matrix.compiler }}
+          path: build/research/results.txt
+          if-no-files-found: error
