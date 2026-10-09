@@ -1,0 +1,48 @@
+name: M8 Nested Element Research
+
+on:
+  push:
+    branches:
+      - research/m8-nested-elements
+    paths:
+      - experiments/m8_nested_elements/**
+      - .github/workflows/research-m8-nested-elements.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  primitive-matrix:
+    name: Primitive matrix / ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - dmd-2.111.0
+          - ldc-1.41.0
+          - dmd-2.113.0
+          - ldc-1.43.0
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ${{ matrix.compiler }}
+
+      - name: Run primitive probe matrix
+        shell: bash
+        run: |
+          bash experiments/m8_nested_elements/run_matrix.sh             build/research/m8-nested-elements
+
+      - name: Upload primitive results
+        uses: actions/upload-artifact@v7
+        with:
+          name: m8-nested-elements-${{ matrix.compiler }}
+          path: build/research/m8-nested-elements
+          if-no-files-found: error
