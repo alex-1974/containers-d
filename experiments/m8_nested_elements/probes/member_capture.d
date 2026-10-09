@@ -1,6 +1,6 @@
 module m8_member_capture_probe;
 
-import std.stdio : writeln;
+import std.stdio : stdout, writeln;
 
 struct Host
 {
@@ -9,13 +9,15 @@ struct Host
     version (TraitsProbe)
     void run()
     {
+        Host* owner = &this;
+
         struct LocalValue
         {
             int value;
 
             int contextValue() const
             {
-                return context;
+                return owner.context;
             }
         }
 
@@ -33,6 +35,8 @@ struct Host
     version (OrdinaryMoveProbe)
     void run()
     {
+        Host* owner = &this;
+
         struct LocalValue
         {
             int value;
@@ -50,7 +54,7 @@ struct Host
 
             int contextValue() const
             {
-                return context;
+                return owner.context;
             }
         }
 
@@ -67,6 +71,8 @@ struct Host
     version (PlacementMoveProbe)
     void run()
     {
+        Host* owner = &this;
+
         struct LocalValue
         {
             int value;
@@ -84,7 +90,7 @@ struct Host
 
             int contextValue() const
             {
-                return context;
+                return owner.context;
             }
         }
 
@@ -101,6 +107,7 @@ struct Host
             " target.context=", placed.contextValue,
             " same-address=", placed is target);
 
+        stdout.flush();
         destroy!false(*placed);
     }
 }
