@@ -42,8 +42,8 @@ if (Capacity > 0)
 {
     static assert(T.sizeof > 0,
         "StaticVector requires an element type with non-zero size");
-    static assert(!(is(T == struct) && isNested!T && hasIndirections!T),
-        "StaticVector does not support nested/local struct element types with hidden context/indirections");
+    static assert(!(is(T == struct) && isNested!T),
+        "StaticVector does not support nested/context-bearing struct element types");
 
     enum size_t capacity = Capacity;
 
