@@ -26,13 +26,16 @@ The reproducer is independent of containers-d and lives in:
 experiments/m8_nested_elements/minimal/probe.d
 ```
 
-The failing shape contains only:
+The reduced family contains:
 
-- one function-local struct;
+- one function-local nested struct;
 - one `int` payload;
-- one user-defined language move constructor;
 - one aligned raw byte slot;
-- one placement expression:
+- one placement expression.
+
+A user-defined move constructor reproduces the failure, but a control using only a normal `int` constructor reproduces it as well. The defect is therefore not move-constructor-specific.
+
+Move-form placement expression:
 
 ```d
 auto placed = new (*target) LocalValue(__rvalue(source));
@@ -110,6 +113,16 @@ after-destroy
 
 LDC 1.41.0, 1.42.0, and 1.43.0 show the same successful boundary behavior.
 
+## Trigger isolation
+
+Additional controls on DMD 2.112.1 and 2.113.0 show:
+
+- making the local struct `static` changes `__traits(isNested, T)` to false and placement construction passes;
+- keeping the type nested/context-bearing but constructing it with a normal `int` constructor still produces SIGSEGV 139;
+- the same normal-constructor nested placement passes on DMD 2.111.0 and LDC 1.41/1.42/1.43.
+
+The narrow trigger is therefore **placement new of a nested/context-bearing local struct**, not the move constructor.
+
 ## Interpretation
 
 This reduction strengthens the M8 toolchain signal substantially:
@@ -120,9 +133,10 @@ This reduction strengthens the M8 toolchain signal substantially:
 4. ordinary typed-storage move remains successful;
 5. the failure is specific to placement construction of this nested
    move-bearing local type;
-6. the regression appears between DMD 2.111.0 and DMD 2.112.1;
-7. LDC 1.42.0 and 1.43.0 do not reproduce the DMD failure despite their
-   corresponding DMD frontend bases.
+6. a normal value constructor reproduces the same failure, excluding move-specific lowering as the necessary trigger;
+7. a static local struct control passes, isolating the hidden nested context as material;
+8. the regression appears between DMD 2.111.0 and DMD 2.112.1;
+9. LDC 1.42.0 and 1.43.0 do not reproduce the DMD failure despite their corresponding DMD frontend bases.
 
 The result is now small enough for source/specification review and likely
 upstream-toolchain classification, but the issue should not be filed upstream
@@ -139,3 +153,37 @@ language/toolchain contract and, independently, whether containers-d can
 support any nested subset with a portable zero-cost path.
 
 Do not add byte-copy or context-pointer repair workarounds.
+
+
+## Upstream status
+
+Searches of `dlang/dmd` found related but distinct issues:
+
+- #20950 — placement new does not call an implicit copy constructor;
+- #21222 — placement new returns a bad pointer;
+- #20090 — a static variable of nested type can crash at runtime;
+- #23355 — `object.destroy` problems for local self-referential types.
+
+None matches this regression.
+
+Workspace toolchain classification: **CRASH**, component **DMD**.
+
+Affected:
+- DMD 2.112.1;
+- DMD 2.113.0.
+
+Not affected:
+- DMD 2.111.0;
+- LDC 1.41.0;
+- LDC 1.42.0;
+- LDC 1.43.0.
+
+An upstream issue should be filed under the title:
+
+```text
+[REG2.112] Placement new of nested local struct segfaults
+```
+
+The GitHub integration used for this research lacks permission to create issues
+in `dlang/dmd` and returned HTTP 403, so the upstream report remains pending
+administrative submission rather than pending technical reduction.
