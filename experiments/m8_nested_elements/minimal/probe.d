@@ -29,10 +29,10 @@ version (TraitsProbe)
         }
 
         printf(
-            "isNested=%s constructCompiles=%s initCompiles=%s sizeof=%zu alignof=%zu\n",
-            __traits(isNested, LocalValue) ? "true" : "false",
-            __traits(compiles, LocalValue(1)) ? "true" : "false",
-            __traits(compiles, LocalValue.init) ? "true" : "false",
+            "isNested=%d constructCompiles=%d initCompiles=%d sizeof=%zu alignof=%zu\n",
+            cast(int) __traits(isNested, LocalValue),
+            cast(int) __traits(compiles, LocalValue(1)),
+            cast(int) __traits(compiles, LocalValue.init),
             LocalValue.sizeof,
             LocalValue.alignof);
     }
@@ -94,17 +94,15 @@ else version (PlacementConstructProbe)
         marker("after-placement-new");
 
         printf(
-            "source=%d target=%d sameAddress=%s\n",
+            "source=%d target=%d sameAddress=%d\n",
             source.value,
             placed.value,
-            placed is target ? "true" : "false");
+            cast(int) (placed is target));
         fflush(stdout);
     }
 }
 else version (PlacementDestroyProbe)
 {
-    import core.lifetime : destroy;
-
     void main()
     {
         struct LocalValue
