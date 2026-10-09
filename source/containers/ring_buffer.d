@@ -206,8 +206,9 @@ version (unittest)
 /// Identity assignment is currently disabled.
 ///
 /// Params:
-///   T = element type; nested/local struct types carrying hidden outer
-///       context/indirections are not supported in the v0.1 API
+///   T = element type; nested/context-bearing struct types are unsupported
+///       because generic raw-storage construction cannot portably supply
+///       their hidden lexical context
 ///   Capacity = maximum number of live elements; must be greater than zero
 ///
 /// Init:
