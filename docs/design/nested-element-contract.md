@@ -1,7 +1,8 @@
 # Nested/context-bearing element contract
 
-Status: M8 research decision  
-Tracking: issue #10
+Status: Production contract  
+Research: issue #10  
+Production hardening: issue #78
 
 ## Decision
 
@@ -64,3 +65,12 @@ Reconsider support only if the D language/toolchain gains a portable generic
 mechanism that lets reusable code construct a nested value with the correct
 context without exposing compiler representation details or imposing runtime
 cost on ordinary element types.
+
+## Toolchain note
+
+M8 also reduced a separate DMD regression: placement new of an
+`isNested == true` local struct succeeds with DMD 2.111.0 but crashes with
+DMD 2.112.1 and 2.113.0 in the qualified reproducer, while the corresponding
+LDC releases pass. That compiler defect is separate from this library contract:
+even where direct lexical-scope placement succeeds, reusable generic container
+machinery has no portable way to synthesize the hidden lexical context.
