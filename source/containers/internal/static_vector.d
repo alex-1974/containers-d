@@ -32,8 +32,8 @@ import std.traits :
  *
  * Initial family constraints:
  * - Capacity must be greater than zero;
- * - nested/local structs with hidden indirections remain excluded while issue
- *   #10 is unresolved;
+ * - nested/context-bearing structs are unsupported because generic raw-storage
+ *   construction cannot portably supply their hidden lexical context;
  * - identity assignment for element types requiring custom transfer remains
  *   disabled in this prototype.
  */
