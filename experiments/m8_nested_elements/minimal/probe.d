@@ -101,6 +101,78 @@ else version (PlacementConstructProbe)
         fflush(stdout);
     }
 }
+else version (StaticLocalPlacementProbe)
+{
+    void main()
+    {
+        static struct LocalValue
+        {
+            int value;
+
+            this(int value)
+            {
+                this.value = value;
+            }
+
+            this(return scope LocalValue rhs)
+            {
+                value = rhs.value;
+                rhs.value = -1;
+            }
+        }
+
+        align(LocalValue.alignof) ubyte[LocalValue.sizeof] storage = void;
+        auto target = cast(LocalValue*) storage.ptr;
+        auto source = LocalValue(41);
+
+        marker("before-static-placement-new");
+        auto placed = new (*target) LocalValue(__rvalue(source));
+        marker("after-static-placement-new");
+
+        printf(
+            "isNested=%d source=%d target=%d sameAddress=%d\n",
+            cast(int) __traits(isNested, LocalValue),
+            source.value,
+            placed.value,
+            cast(int) (placed is target));
+        fflush(stdout);
+    }
+}
+else version (NestedValueCtorPlacementProbe)
+{
+    void main()
+    {
+        struct LocalValue
+        {
+            int value;
+
+            this(int value)
+            {
+                this.value = value;
+            }
+
+            this(return scope LocalValue rhs)
+            {
+                value = rhs.value;
+                rhs.value = -1;
+            }
+        }
+
+        align(LocalValue.alignof) ubyte[LocalValue.sizeof] storage = void;
+        auto target = cast(LocalValue*) storage.ptr;
+
+        marker("before-value-placement-new");
+        auto placed = new (*target) LocalValue(51);
+        marker("after-value-placement-new");
+
+        printf(
+            "isNested=%d target=%d sameAddress=%d\n",
+            cast(int) __traits(isNested, LocalValue),
+            placed.value,
+            cast(int) (placed is target));
+        fflush(stdout);
+    }
+}
 else version (PlacementDestroyProbe)
 {
     void main()
