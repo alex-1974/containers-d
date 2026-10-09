@@ -1464,9 +1464,8 @@ unittest
 
 unittest
 {
-    // v0.1 deliberately rejects nested/local struct element types. Their
-    // hidden context/frame semantics require a separate contract before raw
-    // container storage can admit them safely (issue #10).
+    // Context-bearing nested structs are deliberately unsupported: generic
+    // raw-storage construction cannot portably supply their hidden frame.
     int outer;
 
     struct NestedElement
