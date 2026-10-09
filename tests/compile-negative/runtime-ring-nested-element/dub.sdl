@@ -1,0 +1,5 @@
+name "containers-d-runtime-ring-nested-element-negative"
+description "RingBuffer must reject nested/context-bearing struct elements"
+targetType "executable"
+
+dependency "containers-d" path="../../../"
