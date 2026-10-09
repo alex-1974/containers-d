@@ -236,8 +236,8 @@ struct StaticRingBuffer(T, size_t Capacity)
         "StaticRingBuffer requires an element type with non-zero size");
     static assert((T.alignof & (T.alignof - 1)) == 0,
         "StaticRingBuffer requires power-of-two T alignment");
-    static assert(!(is(T == struct) && isNested!T && hasIndirections!T),
-        "StaticRingBuffer v0.1 does not support nested/local struct element types with hidden context/indirections");
+    static assert(!(is(T == struct) && isNested!T),
+        "StaticRingBuffer does not support nested/context-bearing struct element types");
 
     /// Compile-time maximum number of live elements.
     enum size_t capacity = Capacity;
