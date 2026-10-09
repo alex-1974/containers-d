@@ -7,7 +7,7 @@ root="$(
 )"
 cd "$root"
 
-compiler="${DC:-dmd}"
+compiler="${DMD:-${DC:-dmd}}"
 out_dir="${1:-build/research/m8-nested-elements}"
 mkdir -p "$out_dir/bin" "$out_dir/logs"
 
