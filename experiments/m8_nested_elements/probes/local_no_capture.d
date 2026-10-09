@@ -13,6 +13,8 @@ version (TraitsProbe)
 
         writeln(
             "isNested=", __traits(isNested, LocalValue),
+            " constructCompiles=", __traits(compiles, LocalValue(1)),
+            " initCompiles=", __traits(compiles, LocalValue.init),
             " sizeof=", LocalValue.sizeof,
             " alignof=", LocalValue.alignof);
     }
