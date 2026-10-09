@@ -80,6 +80,10 @@ jobs:
         shell: bash
         run: DFLAGS="-preview=dip1000" dub run --root=tests/static-vector-consumer --compiler="$DC" --force
 
+      - name: Nested element compile contract
+        shell: bash
+        run: dub run --root=tests/nested-element-contract --compiler="$DC" --force
+
       - name: StaticVector lifecycle
         shell: bash
         run: dub run --root=tests/static-vector-lifecycle --compiler="$DC" --force
@@ -134,6 +138,24 @@ jobs:
                 --compiler="$DC" \
                 --force; then
               echo "Expected invalid StaticVector transfer to fail: $root"
+              false
+            fi
+          done
+
+      - name: Nested element negative compile contract
+        shell: bash
+        run: |
+          for root in \
+            tests/compile-negative/static-ring-nested-element \
+            tests/compile-negative/static-vector-nested-element \
+            tests/compile-negative/runtime-ring-nested-element \
+            tests/compile-negative/scratch-buffer-nested-element
+          do
+            if dub build \
+                --root="$root" \
+                --compiler="$DC" \
+                --force; then
+              echo "Expected nested/context-bearing element rejection: $root"
               false
             fi
           done

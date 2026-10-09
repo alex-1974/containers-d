@@ -21,7 +21,6 @@ import std.traits :
     hasElaborateCopyConstructor,
     hasElaborateDestructor,
     hasElaborateMove,
-    hasIndirections,
     isNested;
 
 /**
@@ -32,8 +31,8 @@ import std.traits :
  *
  * Initial family constraints:
  * - Capacity must be greater than zero;
- * - nested/local structs with hidden indirections remain excluded while issue
- *   #10 is unresolved;
+ * - nested/context-bearing structs are unsupported because generic raw-storage
+ *   construction cannot portably supply their hidden lexical context;
  * - identity assignment for element types requiring custom transfer remains
  *   disabled in this prototype.
  */
@@ -42,8 +41,8 @@ if (Capacity > 0)
 {
     static assert(T.sizeof > 0,
         "StaticVector requires an element type with non-zero size");
-    static assert(!(is(T == struct) && isNested!T && hasIndirections!T),
-        "StaticVector does not support nested/local struct element types with hidden context/indirections");
+    static assert(!(is(T == struct) && isNested!T),
+        "StaticVector does not support nested/context-bearing struct element types");
 
     enum size_t capacity = Capacity;
 

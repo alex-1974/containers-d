@@ -206,8 +206,9 @@ version (unittest)
 /// Identity assignment is currently disabled.
 ///
 /// Params:
-///   T = element type; nested/local struct types carrying hidden outer
-///       context/indirections are not supported in the v0.1 API
+///   T = element type; nested/context-bearing struct types are unsupported
+///       because generic raw-storage construction cannot portably supply
+///       their hidden lexical context
 ///   Capacity = maximum number of live elements; must be greater than zero
 ///
 /// Init:
@@ -236,8 +237,8 @@ struct StaticRingBuffer(T, size_t Capacity)
         "StaticRingBuffer requires an element type with non-zero size");
     static assert((T.alignof & (T.alignof - 1)) == 0,
         "StaticRingBuffer requires power-of-two T alignment");
-    static assert(!(is(T == struct) && isNested!T && hasIndirections!T),
-        "StaticRingBuffer v0.1 does not support nested/local struct element types with hidden context/indirections");
+    static assert(!(is(T == struct) && isNested!T),
+        "StaticRingBuffer does not support nested/context-bearing struct element types");
 
     /// Compile-time maximum number of live elements.
     enum size_t capacity = Capacity;
@@ -1463,9 +1464,8 @@ unittest
 
 unittest
 {
-    // v0.1 deliberately rejects nested/local struct element types. Their
-    // hidden context/frame semantics require a separate contract before raw
-    // container storage can admit them safely (issue #10).
+    // Context-bearing nested structs are deliberately unsupported: generic
+    // raw-storage construction cannot portably supply their hidden frame.
     int outer;
 
     struct NestedElement

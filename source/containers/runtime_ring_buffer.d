@@ -11,7 +11,7 @@ import containers.internal.element_lifetime :
 import containers.internal.ring_sequence : RingSequenceOps;
 import containers.internal.runtime_storage : RuntimeStorageOwner;
 import core.lifetime : emplace, forward;
-import std.traits : hasIndirections, isNested, Unqual;
+import std.traits : isNested, Unqual;
 
 /**
  * Owning bounded FIFO ring buffer with runtime-selected capacity.
@@ -27,8 +27,8 @@ struct RingBuffer(T)
 {
     static assert(T.sizeof > 0,
         "RingBuffer requires an element type with non-zero size");
-    static assert(!(is(T == struct) && isNested!T && hasIndirections!T),
-        "RingBuffer v0.1 does not support nested/local struct element types with hidden context/indirections");
+    static assert(!(is(T == struct) && isNested!T),
+        "RingBuffer does not support nested/context-bearing struct element types");
 
 private:
     mixin PlacementMoveOps!T;
@@ -411,8 +411,8 @@ unittest
 
 unittest
 {
-    // v0.1 deliberately rejects nested/local struct element types. Their
-    // hidden context/frame lifetime is not part of the admitted contract.
+    // Context-bearing nested structs are deliberately unsupported: generic
+    // raw-storage construction cannot portably supply their hidden frame.
     int outer;
 
     struct NestedElement

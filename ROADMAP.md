@@ -301,9 +301,9 @@ raster-d migration is part of this promotion.
 Production promotion completed through PR #64 and merged to develop as
 `2662a97b09b6aa619d150c727af13fc85852fea3`.
 
-## M8 — Nested/local element qualification — research
+## M8 — Nested/local element qualification — complete
 
-Tracking: issue #10.
+Research tracking: issue #10. Production hardening: issue #78.
 
 M8 qualifies the boundary between containers-d raw-storage/lifetime machinery
 and D element types that may carry hidden lexical or aggregate context.
@@ -338,6 +338,22 @@ M8 exits with one explicit evidence-backed contract:
 Raw byte copying of hidden context is not an admissible workaround.
 
 No production API change is assumed before the research decision is complete.
+
+Qualified result:
+
+- struct element types with `__traits(isNested, T)` are unsupported by
+  contract in StaticRingBuffer, StaticVector, RingBuffer and ScratchBuffer;
+- function-local types with `isNested == false` remain admissible subject to
+  the normal element contract;
+- raw storage can represent the tested context-bearing type, but generic
+  construction cannot portably supply its hidden lexical frame;
+- no context-pointer copying, runtime repair or public policy/customization
+  surface is admitted;
+- the production guards express the semantic `isNested` boundary directly.
+
+Decision record: `docs/design/nested-element-contract.md`.
+
+M8 is complete.
 
 ## Later candidates
 

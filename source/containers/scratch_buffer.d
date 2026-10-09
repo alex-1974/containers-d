@@ -31,8 +31,8 @@ struct ScratchBuffer(T)
 {
     static assert(T.sizeof > 0,
         "ScratchBuffer requires an element type with non-zero size");
-    static assert(!(is(T == struct) && isNested!T && hasIndirections!T),
-        "ScratchBuffer does not support nested/local struct element types with hidden context/indirections");
+    static assert(!(is(T == struct) && isNested!T),
+        "ScratchBuffer does not support nested/context-bearing struct element types");
 
 private:
     mixin PlacementMoveOps!T;
