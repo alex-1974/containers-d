@@ -1,6 +1,6 @@
 module m8_module_scope_probe;
 
-import std.stdio : writeln;
+import std.stdio : stdout, writeln;
 
 struct ModuleValue
 {
@@ -57,6 +57,7 @@ else version (PlacementMoveProbe)
             " target.value=", placed.value,
             " same-address=", placed is target);
 
+        stdout.flush();
         destroy!false(*placed);
     }
 }
