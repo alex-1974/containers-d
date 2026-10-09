@@ -21,7 +21,6 @@ import std.traits :
     hasElaborateCopyConstructor,
     hasElaborateDestructor,
     hasElaborateMove,
-    hasIndirections,
     isNested;
 
 /**
