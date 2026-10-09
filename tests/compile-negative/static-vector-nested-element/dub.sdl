@@ -1,0 +1,5 @@
+name "containers-d-static-vector-nested-element-negative"
+description "StaticVector must reject nested/context-bearing struct elements"
+targetType "executable"
+
+dependency "containers-d" path="../../../"
