@@ -1,0 +1,50 @@
+name: M8 Primitive Qualification
+
+on:
+  push:
+    branches:
+      - research/m8-nested-elements
+    paths:
+      - .github/workflows/research-m8-qualification.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  primitive-matrix:
+    name: Qualification / ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - dmd-2.111.0
+          - dmd-2.112.1
+          - dmd-2.113.0
+          - ldc-1.41.0
+          - ldc-1.42.0
+          - ldc-1.43.0
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ${{ matrix.compiler }}
+
+      - name: Run primitive probe matrix
+        shell: bash
+        run: |
+          bash experiments/m8_nested_elements/run_matrix.sh \
+            build/research/m8-primitive-qualification
+
+      - name: Upload primitive results
+        uses: actions/upload-artifact@v7
+        with:
+          name: m8-primitive-qualification-${{ matrix.compiler }}
+          path: build/research/m8-primitive-qualification
+          if-no-files-found: error
