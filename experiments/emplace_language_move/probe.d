@@ -119,6 +119,22 @@ private void assignmentMirror()
         " target.armed=", target.armed);
 }
 
+private void assignmentMirrorWithDestructor()
+{
+    MoveAwareDtor.moves = 0;
+    auto source = MoveAwareDtor(25);
+    MoveAwareDtor target;
+    forwardAssign(target, __rvalue(source));
+
+    import std.stdio : writeln;
+    writeln("forward-assign-dtor",
+        " moves=", MoveAwareDtor.moves,
+        " source.value=", source.value,
+        " source.armed=", source.armed,
+        " target.value=", target.value,
+        " target.armed=", target.armed);
+}
+
 private void emplaceNoDestructor()
 {
     MoveAware.moves = 0;
@@ -194,6 +210,7 @@ void main()
 
     directMove();
     assignmentMirror();
+    assignmentMirrorWithDestructor();
     emplaceNoDestructor();
     emplaceWithDestructor();
     emplaceSelfAware();
