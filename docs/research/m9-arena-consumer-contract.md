@@ -138,3 +138,77 @@ Only propose a production M9 Arena if:
 - an ADR records the choice and non-goals.
 
 **Otherwise: defer.** No change to consumer code, public API or release plan.
+
+
+## Second consumer — geo-d polygon union (new source-level finding)
+
+Inspected `geo-d` default `develop`, module
+[`source/geo/internal/polygon_union_p1.d`](https://github.com/alex-1974/geo-d/blob/develop/source/geo/internal/polygon_union_p1.d)
+(lines approximately 190–395).
+
+The production polygon-union orchestration **actually allocates many
+simultaneously live heterogeneous arrays** within one call:
+
+| Scratch role | Type | Allocation cardinality |
+|---|---|---|
+| selected half-edges | `bool[]` | `halfEdgeCount` |
+| successor, edge cycles | `size_t[]` each | `halfEdgeCount` each |
+| vertex cycle | `size_t[]` | `vertexCount` |
+| cycle records | `ExactUnionBoundaryCycle[]` | `halfEdgeCount` |
+| cycle roles / component maps | `ExactUnionCycleRole[]` / `size_t[]` | `cycleCount` |
+| component descriptors | `ExactUnionComponent[]` | `cycleCount` |
+| layout and canonical ordering | multiple `size_t[]` | `cycleCount`, `componentCount`, `componentCount+1` |
+| materialization working state | `size_t[]`, `Point2!double[]`, `MaterializedUnionBoundaryEdge[]` | vertex and half-edge bounds |
+
+The arrays are used together across successive internal routines, with
+separate explicit slices passed into the algorithms. This is a *real*
+heterogeneous multi-allocation consumer and cannot be reduced to one
+`ScratchBuffer!T` without losing typed separation.
+
+**Critical ownership boundary:** Some arrays later contribute to output
+materialization. The public polygon-union result is immutable owning
+GC-backed storage
+([`geo.polygon_union`](https://github.com/alex-1974/geo-d/blob/develop/source/geo/polygon_union.d)).
+No arena-backed references may escape into such retained results. The
+working-set classification must follow actual data flow, not merely the
+`new T[]` syntax.
+
+The implementation currently uses D GC arrays and does **not** demand a new
+`@nogc` caller-facing API. An arena would be an **optional, measured
+internal allocation optimization**, not a source-compatible drop-in migration.
+
+### Updated admission assessment
+
+- Two **independent semantic consumers** are now identified:
+  `osm-d` documented worker-local block-lifetime heterogeneous scratch;
+  `geo-d` observed in-source many typed allocations per union call.
+- Their **implementation maturity differs**: `geo-d` is directly observed;
+  `osm-d` still needs proof of an implemented multi-allocation arena path.
+- Sufficient reason exists for a **restricted research-only arena prototype**,
+  **not** production/public M9 admission.
+
+### Constrained prototype hypothesis
+
+Research a *worker-/call-confined, monotonic, segmented, byte-backed arena*
+with bulk reset for **trivially destructible / pointer-free payloads only**.
+Expose typed allocation as a tested research convenience, but avoid promising
+compile-time non-escaping borrows until proved.
+
+- Do not relocate chunks while borrows exist.
+- All size arithmetic checked; alignment explicit and tested.
+- No GC references in externally malloc-backed allocations unless registered
+  and proven; initial prototype instead rejects GC-indirection-bearing types.
+- Record exhaustion and high-water explicitly.
+- Never reset before output materialization has copied needed data.
+- Separate layout growth/allocation costs from steady-state per-call costs.
+- Benchmark many independent `new T[]` arrays (real baseline), reused
+  `ScratchBuffer` or caller slices where practicable, and monotonic arena.
+- Require measurable improvement on *both* typed-array setup cost and complete
+  polygon-union throughput; benchmark overhead alone is insufficient.
+
+### Prototype exit gate
+
+A candidate implementation is worth *researching* now, but it must remain
+non-public until compiler-checked lifetime tests, source-level call-site
+audit, DMD/LDC performance, fair C++ comparator and an ADR are available.
+The repo's active pre-migration/research workflow must be preserved.
