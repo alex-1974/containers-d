@@ -1,6 +1,5 @@
 module m8_member_capture_probe;
 
-import core.lifetime : destroy;
 import std.stdio : writeln;
 
 struct Host
