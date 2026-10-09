@@ -6,6 +6,59 @@ This document defines the release procedure for the independently versioned
 The first release is `v0.1.0`. It publishes only the admitted static- and
 runtime-capacity ring-buffer families.
 
+## Repository-specific promotion policy for protected `main`
+
+`containers-d` intentionally specializes the workspace default merge strategy
+for release and hotfix promotion.
+
+The repository's protected `main` branch enforces linear history. Repository
+settings allow merge commits in general, but promotion of the v0.2.0 release
+demonstrated that `main` rejects a merge commit with:
+
+```text
+This branch must not contain merge commits
+```
+
+No repository rulesets are currently defined. The GitHub integration cannot
+read the administrative branch-protection endpoint, but the enforced behavior
+is authoritative for this repository.
+
+Therefore:
+
+- `release/* -> main` uses a **squash merge**;
+- `hotfix/* -> main` uses a **squash merge**;
+- the source release/hotfix branch head MUST pass every applicable exact-head
+  Release Gate before promotion;
+- the promoted `main` commit MUST have the same qualified tree as the source
+  head; verify tree identity explicitly;
+- the full Release Gate MUST pass again on the promoted `main` commit;
+- only that green `main` commit may receive the annotated/signed release tag;
+- no force-push, history rewrite, or weakening of `main` protection is part
+  of this specialization.
+
+For a release branch:
+
+```bash
+SOURCE_COMMIT="$(git rev-parse release/X.Y)"
+SOURCE_TREE="$(git rev-parse "$SOURCE_COMMIT^{tree}")"
+
+# Merge the release PR using GitHub squash merge, then:
+git fetch origin main
+MAIN_COMMIT="$(git rev-parse origin/main)"
+MAIN_TREE="$(git rev-parse "$MAIN_COMMIT^{tree}")"
+
+test "$MAIN_TREE" = "$SOURCE_TREE"
+```
+
+The same tree-identity rule applies to a hotfix branch cut from the affected
+release tag. After publication, forward-integrate the resulting release/hotfix
+state into `develop` through the normal PR/cherry-pick path.
+
+This is an explicit repository-specific exception to the workspace default
+`release/* -> main` / `hotfix/* -> main` merge-commit strategy. The v0.2.0
+promotion remains grandfathered evidence of the protection rule that motivated
+the exception.
+
 ## 1. Release candidate
 
 Release hardening is tracked by issue #21 on:
