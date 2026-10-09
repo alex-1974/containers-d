@@ -12,6 +12,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: m8-nested-elements-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   primitive-matrix:
     name: Primitive matrix / ${{ matrix.compiler }}
