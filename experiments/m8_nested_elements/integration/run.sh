@@ -23,6 +23,7 @@ esac
 
 modes=(
     PublicContractProbe
+    TraitBoundaryProbe
     InternalStorageProbe
     InternalDirectPlacementProbe
     InternalEmplaceProbe
@@ -41,6 +42,7 @@ printf '\n' | tee -a "$results"
 
 required_modes=(
     PublicContractProbe
+    TraitBoundaryProbe
     InternalStorageProbe
     StaticControlProbe
 )
