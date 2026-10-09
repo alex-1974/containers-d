@@ -212,3 +212,57 @@ A candidate implementation is worth *researching* now, but it must remain
 non-public until compiler-checked lifetime tests, source-level call-site
 audit, DMD/LDC performance, fair C++ comparator and an ADR are available.
 The repo's active pre-migration/research workflow must be preserved.
+
+
+## 2026-10-09 — Research redirection: existing Phobos region allocators
+
+**Decision: PAUSE custom FixedArena development.** The user's XPS v9 experiment
+reported `constructions=1 logical_releases=1` for both DMD and LDC, but that
+only covers one return-by-value path and does not establish generalized
+ownership transfer or safe reset.
+
+The official D Phobos library already includes:
+- `std.experimental.allocator.building_blocks.region.Region!ParentAllocator`:
+  owned contiguous monotonic storage; `deallocateAll`; reports exhaustion.
+- `BorrowedRegion`: caller-backed, non-owning region. This is a promising
+  fit for existing slice-owned consumer workspaces.
+- `InSituRegion!(size, alignment)`: inline static storage; beware documented
+  alignment overhead reducing usable capacity.
+- `std.experimental.allocator.building_blocks.allocator_list.AllocatorList`:
+  factory-created region chains, with independently selectable bookkeeping
+  allocator. Do **not** assume no GC bookkeeping or guaranteed stable addresses
+  without source tests.
+
+Official sources:
+- https://dlang.org/phobos/std_experimental_allocator_building_blocks_region.html
+- https://dlang.org/phobos/std_experimental_allocator_building_blocks_allocator_list.html
+- https://dlang.org/phobos/std_experimental_allocator.html
+
+### Qualified observations vs outstanding hypotheses
+
+*Documented*: the region types offer bump allocation, alignment,
+`deallocateAll`, and owned/borrowed/in-situ storage alternatives.
+*Not yet compiler-qualified on our supported versions*: copy/move owner
+invariants, exact alignment/overflow behavior for all capacities,
+GC-reachable pointers, destructor obligations, lifetime safety across reset,
+and `AllocatorList` full-reuse semantics.
+
+The production API remains unchanged; `FixedArena` is a historical research
+control, not the next planned implementation.
+
+### Next experimental matrix
+
+1. DMD 2.111.0 and LDC 1.41.0: compile/run bare Region, BorrowedRegion,
+   InSituRegion allocation/reset/alignment probes. Record exact Phobos versions.
+2. Read the corresponding Phobos source, including destructor, copy/move and
+   release logic; negative compile probes must reject unsafe owner copying.
+3. Independently test `AllocatorList` and bookkeeping allocation behavior;
+   do not conflate `deallocateAll` with release of retained backing chunks.
+4. Compare against `ScratchBuffer`, caller slices, and C++
+   `std::pmr::monotonic_buffer_resource` under matching capacity,
+   allocation failure, destructor and reset semantics.
+5. Only after that investigate complete geo-d polygon union and osm-d block
+   throughput; public M9 Arena still requires measured cross-consumer benefit.
+
+**Safety rule:** Do not expose `@safe` arena borrows or silently reset active
+views. DIP1000 escape tests alone do not prove safe arena reset.
