@@ -159,7 +159,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload probe evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: runtime-ring-buffer-operations-${{ matrix.compiler }}
           path: |
