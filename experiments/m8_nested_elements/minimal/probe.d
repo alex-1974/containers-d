@@ -130,10 +130,10 @@ else version (PlacementDestroyProbe)
         marker("after-placement-new");
 
         printf(
-            "source=%d target=%d sameAddress=%s\n",
+            "source=%d target=%d sameAddress=%d\n",
             source.value,
             placed.value,
-            placed is target ? "true" : "false");
+            cast(int) (placed is target));
         fflush(stdout);
 
         marker("before-destroy");
