@@ -1,6 +1,5 @@
 module m8_local_capture_probe;
 
-import core.lifetime : destroy;
 import std.stdio : writeln;
 
 version (TraitsProbe)
