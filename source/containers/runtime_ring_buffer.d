@@ -11,7 +11,7 @@ import containers.internal.element_lifetime :
 import containers.internal.ring_sequence : RingSequenceOps;
 import containers.internal.runtime_storage : RuntimeStorageOwner;
 import core.lifetime : emplace, forward;
-import std.traits : hasIndirections, isNested, Unqual;
+import std.traits : isNested, Unqual;
 
 /**
  * Owning bounded FIFO ring buffer with runtime-selected capacity.
