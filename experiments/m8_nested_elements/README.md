@@ -39,9 +39,11 @@ Decision baselines:
 - DMD 2.111.0
 - LDC 1.41.0
 
-Comparison compilers:
+Supported comparison compilers:
 
+- DMD 2.112.1
 - DMD 2.113.0
+- LDC 1.42.0
 - LDC 1.43.0
 
 The workflow records compiler diagnostics verbatim so frontend differences are
