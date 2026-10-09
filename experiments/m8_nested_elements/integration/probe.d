@@ -90,6 +90,41 @@ else version (InternalStorageProbe)
         assert(cast(size_t) second % Nested.alignof == 0);
     }
 }
+else version (InternalDirectPlacementProbe)
+{
+    void main()
+    {
+        int context = 105;
+
+        struct Nested
+        {
+            int value;
+
+            this(int value)
+            {
+                this.value = value;
+            }
+
+            int contextValue() const
+            {
+                return context;
+            }
+        }
+
+        alias Storage = InlineRawStorage!(Nested, 1);
+        Storage storage;
+
+        writeln("before-internal-direct-placement");
+        auto placed = new (*storage.slotPointer(0)) Nested(41);
+        writeln("after-internal-direct-placement");
+
+        writeln(
+            "value=", placed.value,
+            " context=", placed.contextValue);
+
+        destroy!false(*placed);
+    }
+}
 else version (InternalEmplaceProbe)
 {
     void main()
