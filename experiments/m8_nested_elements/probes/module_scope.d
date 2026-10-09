@@ -1,6 +1,5 @@
 module m8_module_scope_probe;
 
-import core.lifetime : destroy;
 import std.stdio : writeln;
 
 struct ModuleValue
