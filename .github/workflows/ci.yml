@@ -80,6 +80,10 @@ jobs:
         shell: bash
         run: DFLAGS="-preview=dip1000" dub run --root=tests/static-vector-consumer --compiler="$DC" --force
 
+      - name: Nested element compile contract
+        shell: bash
+        run: dub run --root=tests/nested-element-contract --compiler="$DC" --force
+
       - name: StaticVector lifecycle
         shell: bash
         run: dub run --root=tests/static-vector-lifecycle --compiler="$DC" --force
