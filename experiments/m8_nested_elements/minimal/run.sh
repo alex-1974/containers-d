@@ -25,6 +25,8 @@ modes=(
     TraitsProbe
     OrdinaryMoveProbe
     PlacementConstructProbe
+    StaticLocalPlacementProbe
+    NestedValueCtorPlacementProbe
     PlacementDestroyProbe
 )
 
