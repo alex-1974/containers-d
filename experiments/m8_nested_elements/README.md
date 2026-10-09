@@ -21,7 +21,8 @@ public container contract.
 Each category is compiled independently in three modes:
 
 1. `TraitsProbe`
-   - reports `__traits(isNested, T)`, size and alignment;
+   - reports `__traits(isNested, T)`, `__traits(compiles, ...)` for basic
+     construction/`.init`, size and alignment;
 2. `OrdinaryMoveProbe`
    - performs ordinary typed-storage language move construction;
 3. `PlacementMoveProbe`
@@ -53,3 +54,11 @@ not normalized away.
 - Distinguish default initialization from `.init` for nested structs.
 - Do not change containers-d production code until the primitive behavior is
   understood and the M8 decision gate in issue #10 is reached.
+
+
+## Compile-trait role
+
+`__traits(compiles, ...)` is recorded as a frontend feature probe. It is
+complementary to, not a replacement for, the independent compile cells:
+separate compilation preserves exact diagnostics for context-sensitive
+language-move and placement-new failures.
