@@ -24,6 +24,8 @@ version (TraitsProbe)
     {
         writeln(
             "isNested=", __traits(isNested, ModuleValue),
+            " constructCompiles=", __traits(compiles, ModuleValue(1)),
+            " initCompiles=", __traits(compiles, ModuleValue.init),
             " sizeof=", ModuleValue.sizeof,
             " alignof=", ModuleValue.alignof);
     }
