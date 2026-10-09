@@ -1,6 +1,6 @@
 module containers.m8_nested_integration_probe;
 
-import containers : StaticRingBuffer, StaticVector;
+import containers : RingBuffer, ScratchBuffer, StaticRingBuffer, StaticVector;
 import containers.internal.element_lifetime : PlacementMoveOps;
 import containers.internal.inline_storage : InlineRawStorage;
 
@@ -35,17 +35,87 @@ version (PublicContractProbe)
         enum bool vectorCompiles = __traits(compiles, {
             StaticVector!(Nested, 2) vector;
         });
+        enum bool runtimeRingCompiles = __traits(compiles, {
+            auto ring = RingBuffer!Nested(2);
+        });
+        enum bool scratchCompiles = __traits(compiles, {
+            auto scratch = ScratchBuffer!Nested(2);
+        });
 
         writeln(
             "isNested=", __traits(isNested, Nested),
             " hasIndirections=", hasIndirections!Nested,
-            " ringCompiles=", ringCompiles,
-            " vectorCompiles=", vectorCompiles);
+            " staticRingCompiles=", ringCompiles,
+            " staticVectorCompiles=", vectorCompiles,
+            " runtimeRingCompiles=", runtimeRingCompiles,
+            " scratchCompiles=", scratchCompiles);
 
         assert(__traits(isNested, Nested));
         assert(hasIndirections!Nested);
         assert(!ringCompiles);
         assert(!vectorCompiles);
+        assert(!runtimeRingCompiles);
+        assert(!scratchCompiles);
+    }
+}
+else version (TraitBoundaryProbe)
+{
+    void main()
+    {
+        struct PlainLocal
+        {
+            int value;
+        }
+
+        struct MoveBearingLocal
+        {
+            int value;
+
+            this(int value)
+            {
+                this.value = value;
+            }
+
+            this(return scope MoveBearingLocal rhs)
+            {
+                value = rhs.value;
+                rhs.value = -1;
+            }
+        }
+
+        int context = 106;
+
+        struct CapturingLocal
+        {
+            int value;
+
+            int contextValue() const
+            {
+                return context;
+            }
+        }
+
+        static struct StaticLocal
+        {
+            int value;
+        }
+
+        writeln(
+            "plain=", __traits(isNested, PlainLocal), "/",
+                hasIndirections!PlainLocal,
+            " moveBearing=", __traits(isNested, MoveBearingLocal), "/",
+                hasIndirections!MoveBearingLocal,
+            " capturing=", __traits(isNested, CapturingLocal), "/",
+                hasIndirections!CapturingLocal,
+            " static=", __traits(isNested, StaticLocal), "/",
+                hasIndirections!StaticLocal);
+
+        assert(!__traits(isNested, PlainLocal));
+        assert(__traits(isNested, MoveBearingLocal));
+        assert(hasIndirections!MoveBearingLocal);
+        assert(__traits(isNested, CapturingLocal));
+        assert(hasIndirections!CapturingLocal);
+        assert(!__traits(isNested, StaticLocal));
     }
 }
 else version (InternalStorageProbe)
