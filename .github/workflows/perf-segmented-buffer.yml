@@ -76,7 +76,10 @@ jobs:
         shell: bash
         run: |
           BIN=build/segmented-buffer/probe
-          ROUNDS=65536
+          # The workload is 1 MiB per round and Callgrind instruments every
+          # byte operation. Keep this large enough for stable variant
+          # comparison without turning the release PR into a multi-hour job.
+          ROUNDS=128
           RESULTS=build/segmented-buffer/results.tsv
           printf 'compiler\tvariant\trounds\tIr\tchecksum\n' > "$RESULTS"
 
