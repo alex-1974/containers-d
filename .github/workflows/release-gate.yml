@@ -103,6 +103,14 @@ jobs:
         shell: bash
         run: dub run --root=tests/gc-reachability --compiler="$DC" --force
 
+      - name: Segmented buffer consumer
+        shell: bash
+        run: dub run --root=tests/segmented-buffer-consumer --compiler="$DC" --force
+
+      - name: Segmented buffer GC and alignment
+        shell: bash
+        run: dub run --root=tests/segmented-buffer-gc --compiler="$DC" --force
+
       - name: Static ring over-alignment GC reachability
         shell: bash
         run: dub run --root=tests/static-ring-overalignment-gc --compiler="$DC" --force
@@ -258,7 +266,8 @@ jobs:
           EOF
 
           cat > build/archive-consumer/source/app.d <<'EOF'
-          import containers : RingBuffer, StaticRingBuffer, StaticVector, WorkStealingDeque;
+          import containers : RingBuffer, StaticRingBuffer, StaticVector,
+              WorkStealingDeque, SegmentedByteBuffer;
 
           void main() @safe @nogc nothrow
           {
@@ -277,6 +286,10 @@ jobs:
 
               auto runtime = RingBuffer!int(2);
               assert(runtime.tryPushBack(2));
+
+              auto segmented = SegmentedByteBuffer(2, 4);
+              assert(segmented.append([3, 4]) == 2);
+              assert(segmented.segment(0) == [3, 4]);
 
               assert(fixed.front + runtime.front == 3);
           }
@@ -343,6 +356,14 @@ jobs:
       - name: Runtime GC reachability
         shell: bash
         run: dub run --root=tests/gc-reachability --compiler="$DC" --force
+
+      - name: Segmented buffer consumer
+        shell: bash
+        run: dub run --root=tests/segmented-buffer-consumer --compiler="$DC" --force
+
+      - name: Segmented buffer GC and alignment
+        shell: bash
+        run: dub run --root=tests/segmented-buffer-gc --compiler="$DC" --force
 
       - name: Release build
         shell: bash

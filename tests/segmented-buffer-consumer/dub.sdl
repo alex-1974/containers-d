@@ -1,0 +1,5 @@
+name "containers-d-segmented-buffer-consumer"
+description "External consumer smoke test for segmented buffers"
+targetType "executable"
+
+dependency "containers-d" path="../../"

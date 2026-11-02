@@ -1,0 +1,110 @@
+name: SegmentedBuffer Performance
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - source/containers/segmented_buffer.d
+      - source/containers/internal/runtime_storage.d
+      - source/containers/internal/element_lifetime.d
+      - benchmarks/segmented_buffer_append_probe.d
+      - .github/workflows/perf-segmented-buffer.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  retired-instructions:
+    name: SegmentedBuffer Ir / ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - dmd-2.111.0
+          - ldc-1.41.0
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ${{ matrix.compiler }}
+
+      - name: Install Callgrind
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y valgrind
+
+      - name: Build probe
+        shell: bash
+        run: |
+          mkdir -p build/segmented-buffer
+          case "${{ matrix.compiler }}" in
+            dmd-*)
+              "$DC" -O -release -inline -boundscheck=off -Isource \
+                -of=build/segmented-buffer/probe \
+                benchmarks/segmented_buffer_append_probe.d \
+                source/containers/*.d source/containers/internal/*.d
+              ;;
+            ldc-*)
+              "$DC" -O3 -release -boundscheck=off -Isource \
+                -of=build/segmented-buffer/probe \
+                benchmarks/segmented_buffer_append_probe.d \
+                source/containers/*.d source/containers/internal/*.d
+              ;;
+          esac
+
+      - name: Verify checksum parity
+        shell: bash
+        run: |
+          BIN=build/segmented-buffer/probe
+          ROUNDS=4096
+          candidate=$($BIN candidate $ROUNDS | awk '{print $2}')
+          manual=$($BIN manual $ROUNDS | awk '{print $2}')
+          flatten=$($BIN flatten $ROUNDS | awk '{print $2}')
+          echo "candidate=$candidate manual=$manual flatten=$flatten"
+          test "$candidate" = "$manual"
+          test "$candidate" = "$flatten"
+
+      - name: Measure retired instructions
+        shell: bash
+        run: |
+          BIN=build/segmented-buffer/probe
+          ROUNDS=65536
+          RESULTS=build/segmented-buffer/results.tsv
+          printf 'compiler\tvariant\trounds\tIr\tchecksum\n' > "$RESULTS"
+
+          measure() {
+            variant="$1"
+            symbol="$2"
+            out="build/segmented-buffer/callgrind-${variant}.out"
+            checksum=$($BIN "$variant" "$ROUNDS" | awk '{print $2}')
+            valgrind --tool=callgrind --collect-atstart=no \
+              --toggle-collect="$symbol" \
+              --callgrind-out-file="$out" "$BIN" "$variant" "$ROUNDS" \
+              >/dev/null 2>&1
+            ir=$(awk '/^summary:/ {print $2}' "$out")
+            printf '%s\t%s\t%s\t%s\t%s\n' \
+              "${{ matrix.compiler }}" "$variant" "$ROUNDS" "$ir" "$checksum" \
+              >> "$RESULTS"
+          }
+
+          measure candidate bench_segmented
+          measure manual bench_manual_segments
+          measure flatten bench_flattened
+          cat "$RESULTS"
+
+      - name: Upload evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: segmented-buffer-${{ matrix.compiler }}
+          path: |
+            build/segmented-buffer/results.tsv
+            build/segmented-buffer/callgrind-*.out
+          if-no-files-found: error
