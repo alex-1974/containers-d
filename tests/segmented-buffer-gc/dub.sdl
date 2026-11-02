@@ -1,0 +1,5 @@
+name "containers-d-segmented-buffer-gc"
+description "GC reachability and alignment test for segmented buffers"
+targetType "executable"
+
+dependency "containers-d" path="../../"

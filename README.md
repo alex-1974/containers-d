@@ -2,7 +2,7 @@
 
 High-performance generic container primitives for D.
 
-Current release: `v0.1.1`.
+Current release: `v0.3.0`.
 
 The 0.x line is the API-stabilization period. Minor 0.x releases may make
 breaking public-API changes when required by evidence; patch releases should
@@ -13,16 +13,10 @@ not intentionally break source compatibility.
 Install the published package through the DUB registry:
 
 ```bash
-dub add containers-d@0.1.1
+dub add containers-d@0.3.0
 ```
 
-The published v0.1.1 package root contains the ring-buffer family:
-
-```d
-import containers : RingBuffer, StaticRingBuffer;
-```
-
-The current unreleased development branch additionally exports:
+The published v0.3.0 package root exports the complete qualified family set:
 
 ```d
 import containers :
@@ -30,7 +24,9 @@ import containers :
     BlockingQueuePopResult,
     BlockingQueuePopStatus,
     BlockingQueuePushResult,
+    RingBuffer,
     ScratchBuffer,
+    StaticRingBuffer,
     StaticVector,
     WorkStealingDeque,
     WorkStealingTakeResult;
@@ -45,7 +41,7 @@ Minimum supported D frontend:
 ```
 
 Normal development is continuously checked with DMD 2.111 and LDC 1.41. The
-v0.1 release gate additionally qualifies DMD 2.112/2.113 and LDC 1.42/1.43 and
+v0.2 release gate additionally qualifies DMD 2.112/2.113 and LDC 1.42/1.43 and
 runs portability jobs on Linux, Windows and macOS.
 
 Sequential container families remain unsynchronized. Concurrent semantics are
@@ -55,9 +51,8 @@ hidden context/lifetime contract is not qualified; issue #10 owns that research.
 
 ## Static vector
 
-The unreleased development branch adds `StaticVector!(T, Capacity)`: a
-compile-time fixed-capacity, runtime-length contiguous vector with inline
-storage and no backing allocation.
+`StaticVector!(T, Capacity)` is a compile-time fixed-capacity, runtime-length
+contiguous vector with inline storage and no backing allocation.
 
 ```d
 import containers : StaticVector;
@@ -86,8 +81,8 @@ implementation details, not public policy parameters.
 
 ## Scratch buffer
 
-The unreleased development branch adds `ScratchBuffer!T`, a reusable
-runtime-capacity contiguous typed buffer for temporary work storage.
+`ScratchBuffer!T` is a reusable runtime-capacity contiguous typed buffer for
+temporary work storage.
 
 ```d
 import containers : ScratchBuffer;
@@ -120,8 +115,7 @@ customization remain outside this API.
 
 ## Work-stealing deque
 
-The unreleased development branch adds
-`WorkStealingDeque!(T, Capacity)`, a bounded fixed-capacity concurrent deque
+`WorkStealingDeque!(T, Capacity)` is a bounded fixed-capacity concurrent deque
 for exactly one owner and zero or more thief threads.
 
 ```d
@@ -165,9 +159,8 @@ but `@safe` cannot enforce the one-owner protocol.
 
 ## Blocking queue
 
-The unreleased development branch adds `BlockingQueue!T`, a bounded
-runtime-capacity synchronized FIFO for multiple producers and multiple
-consumers.
+`BlockingQueue!T` is a bounded runtime-capacity synchronized FIFO for multiple
+producers and multiple consumers.
 
 ```d
 import containers :
@@ -296,9 +289,8 @@ stale conservative roots.
 
 ## Direction
 
-The fixed- and runtime-capacity ring-buffer families are released through
-v0.1.1. The current development line additionally contains the qualified
-`StaticVector!(T, Capacity)`, `ScratchBuffer!T`,
+v0.2.0 publishes the qualified `StaticRingBuffer!(T, Capacity)`,
+`RingBuffer!T`, `StaticVector!(T, Capacity)`, `ScratchBuffer!T`,
 `WorkStealingDeque!(T, Capacity)`, and `BlockingQueue!T` families.
 
 Future candidates include:
@@ -311,3 +303,46 @@ semantics are represented explicitly rather than hidden behind one ambiguous
 container type.
 
 See `ROADMAP.md`, `docs/design/`, and `docs/validation.md`.
+
+## Segmented buffers
+
+The v0.3 development line provides bounded segmented storage for consumers
+that receive or produce data in chunks. The buffer owns each segment
+independently, so a later segment can be acquired without moving earlier
+contents. Data is never silently flattened into one large allocation.
+
+- `SegmentedBuffer!T` — independently owned contiguous segments for generic
+  element values;
+- `SegmentedByteBuffer` — the byte-oriented `SegmentedBuffer!ubyte` entry
+  point used by transport-style consumers.
+
+```d
+import containers : SegmentedByteBuffer;
+
+auto received = SegmentedByteBuffer(64 * 1024, 16 * 1024 * 1024);
+const accepted = received.append(receivedChunk);
+if (accepted != receivedChunk.length)
+    handleMaximumLength();
+
+// Send or process the chunks without first joining them.
+foreach (index; 0 .. received.segmentCount)
+    send(received.segment(index));
+
+// Once the consumer has successfully handled the prefix, release it
+// logically. The underlying segment capacity remains reusable.
+received.consume(bytesSent);
+```
+
+`append` copies the input chunk into owned storage and returns the number of
+accepted elements. A partial result means the maximum length was reached;
+the caller decides whether to retry the remainder or report backpressure.
+`consume` returns the number actually removed from the front. `reset` clears a
+logical batch while retaining segment capacity for the next batch.
+
+`segment(index)` returns a read-only borrowed slice. Do not retain segment
+slices across `append`, `consume`, `reset`, move, or destruction. The type is
+bounded and single-threaded; networking, retries, synchronization and
+backpressure policy remain the consumer's responsibility.
+
+For the full ownership, lifetime and invalidation contract, see
+`docs/design/segmented-buffer.md` and the Ddoc on `SegmentedBuffer!T`.

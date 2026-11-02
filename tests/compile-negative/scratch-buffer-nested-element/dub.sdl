@@ -1,0 +1,5 @@
+name "containers-d-scratch-buffer-nested-element-negative"
+description "ScratchBuffer must reject nested/context-bearing struct elements"
+targetType "executable"
+
+dependency "containers-d" path="../../../"

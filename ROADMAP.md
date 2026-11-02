@@ -301,6 +301,89 @@ raster-d migration is part of this promotion.
 Production promotion completed through PR #64 and merged to develop as
 `2662a97b09b6aa619d150c727af13fc85852fea3`.
 
+## M8 — Nested/local element qualification — complete
+
+Research tracking: issue #10. Production hardening: issue #78.
+
+M8 qualifies the boundary between containers-d raw-storage/lifetime machinery
+and D element types that may carry hidden lexical or aggregate context.
+
+Research scope:
+
+- distinguish module-scope, local-without-capture, local-with-capture and
+  nested aggregate-context element types;
+- record `__traits(isNested, T)` and observable context requirements;
+- establish primitive D/toolchain reference behavior before involving
+  containers-d;
+- qualify placement construction, language move, copy where permitted,
+  destruction, alignment and GC reachability;
+- exercise the relevant paths through `StaticRingBuffer`, `StaticVector` and
+  package-internal lifetime/raw-slot machinery;
+- extend to runtime external storage only where primitive evidence shows that
+  context-bearing values can be represented safely;
+- compare DMD 2.111.0 and LDC 1.41.0 with supported newer compilers and canary
+  compilers where needed to distinguish language semantics from toolchain
+  defects;
+- preserve zero-cost behavior and generated-code quality for ordinary
+  non-nested element types.
+
+M8 exits with one explicit evidence-backed contract:
+
+1. supported nested/local categories;
+2. a precisely defined partially supported subset with compile-time rejection
+   of unsupported forms;
+3. explicit unsupported-by-contract semantics; or
+4. a reduced upstream toolchain defect before any public-contract change.
+
+Raw byte copying of hidden context is not an admissible workaround.
+
+No production API change is assumed before the research decision is complete.
+
+Qualified result:
+
+- struct element types with `__traits(isNested, T)` are unsupported by
+  contract in StaticRingBuffer, StaticVector, RingBuffer and ScratchBuffer;
+- function-local types with `isNested == false` remain admissible subject to
+  the normal element contract;
+- raw storage can represent the tested context-bearing type, but generic
+  construction cannot portably supply its hidden lexical frame;
+- no context-pointer copying, runtime repair or public policy/customization
+  surface is admitted;
+- the production guards express the semantic `isNested` boundary directly.
+
+Decision record: `docs/design/nested-element-contract.md`.
+
+M8 is complete.
+
+## M9 — Segmented buffer family — complete
+
+Tracking: issues #85–#92. Release target: v0.3.0.
+
+The family is consumer-driven by chunked I/O requirements. It provides a
+generic `SegmentedBuffer!T` and the byte-oriented `SegmentedByteBuffer` name,
+both using independently owned contiguous segments without hidden flattening.
+
+Current implementation and gates:
+
+- bounded append with explicit partial-acceptance result;
+- ordered borrowed segment access;
+- front consumption without flattening;
+- reset with retained/reusable segment capacity;
+- explicit move, destruction and borrow invalidation rules;
+- DMD/LDC unit and external consumer tests;
+- DIP1000 negative escape coverage;
+- candidate, direct-segment and flattening benchmark probe.
+
+Qualified result:
+
+- transport-d approved and released its consumer integration;
+- DMD/LDC correctness, consumer, GC/alignment and DIP1000 gates pass;
+- the segmented-buffer Callgrind workflow passes on DMD 2.111 and LDC 1.41;
+- the feature was merged to develop through PR #93.
+
+The remaining v0.3.0 release work is repository publication and package
+promotion, not further segmented-buffer design.
+
 ## Later candidates
 
 - Arena / BufferPool as separate families where consumer evidence justifies
@@ -311,24 +394,3 @@ Production promotion completed through PR #64 and merged to develop as
 
 Later milestones are admitted only when their contracts, consumers, safety and
 performance gates are explicit.
-
-
-## Release v0.2.0 — release candidate
-
-Tracking: issue #66.
-
-Release checkpoints:
-
-- feature freeze: `freeze/feature-0.2.0` at
-  `d385359c5ce4b5fe8ca16a8293860860d3ca5680`;
-- API freeze: `freeze/api-0.2.0` at
-  `767e40e1ce838e1fbd75611e408fec502214ab16`;
-- API-freeze Release Gate: complete across the controlled compiler and
-  portability matrix;
-- release performance qualification: PR #68, covering StaticRingBuffer,
-  RingBuffer, StaticVector, ScratchBuffer, WorkStealingDeque, and
-  production BlockingQueue on the accepted family-specific probes.
-
-The public API is frozen. Remaining work is release metadata, exact-head
-Release Gate qualification, promotion of `release/0.2` to `main`, signed
-annotated `v0.2.0`, GitHub Release publication, and DUB registry smoke.

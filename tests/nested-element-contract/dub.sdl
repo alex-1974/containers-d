@@ -1,0 +1,5 @@
+name "containers-d-nested-element-contract"
+description "External compile-contract test for nested/context-bearing element exclusion"
+targetType "executable"
+
+dependency "containers-d" path="../../"

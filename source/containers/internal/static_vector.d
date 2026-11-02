@@ -21,7 +21,6 @@ import std.traits :
     hasElaborateCopyConstructor,
     hasElaborateDestructor,
     hasElaborateMove,
-    hasIndirections,
     isNested;
 
 /**
@@ -32,8 +31,8 @@ import std.traits :
  *
  * Initial family constraints:
  * - Capacity must be greater than zero;
- * - nested/local structs with hidden indirections remain excluded while issue
- *   #10 is unresolved;
+ * - nested/context-bearing structs are unsupported because generic raw-storage
+ *   construction cannot portably supply their hidden lexical context;
  * - identity assignment for element types requiring custom transfer remains
  *   disabled in this prototype.
  */
@@ -42,10 +41,9 @@ if (Capacity > 0)
 {
     static assert(T.sizeof > 0,
         "StaticVector requires an element type with non-zero size");
-    static assert(!(is(T == struct) && isNested!T && hasIndirections!T),
-        "StaticVector does not support nested/local struct element types with hidden context/indirections");
+    static assert(!(is(T == struct) && isNested!T),
+        "StaticVector does not support nested/context-bearing struct element types");
 
-    /// Compile-time maximum number of live elements.
     enum size_t capacity = Capacity;
 
 private:
@@ -108,12 +106,6 @@ private:
     }
 
 public:
-    /**
-     * Returns the number of live elements.
-     *
-     * Returns:
-     *   Length of the live contiguous prefix.
-     */
     pragma(inline, true)
     @property size_t length() const
         pure nothrow @safe @nogc
@@ -121,12 +113,6 @@ public:
         return _length;
     }
 
-    /**
-     * Reports whether the vector contains no live elements.
-     *
-     * Returns:
-     *   `true` when `length == 0`.
-     */
     pragma(inline, true)
     @property bool empty() const
         pure nothrow @safe @nogc
@@ -134,27 +120,12 @@ public:
         return _length == 0;
     }
 
-    /**
-     * Reports whether the vector has reached its fixed capacity.
-     *
-     * Returns:
-     *   `true` when `length == Capacity`.
-     */
     @property bool full() const
         pure nothrow @safe @nogc
     {
         return _length == Capacity;
     }
 
-    /**
-     * Returns a mutable reference to the first live element.
-     *
-     * Returns:
-     *   Borrowed reference to element zero.
-     *
-     * Preconditions:
-     *   The vector is not empty.
-     */
     ref T front()
         return scope pure nothrow @safe @nogc
     {
@@ -177,15 +148,6 @@ public:
             return *slotPointer(0);
     }
 
-    /**
-     * Returns a mutable reference to the last live element.
-     *
-     * Returns:
-     *   Borrowed reference to element `length - 1`.
-     *
-     * Preconditions:
-     *   The vector is not empty.
-     */
     ref T back()
         return scope pure nothrow @safe @nogc
     {
@@ -208,18 +170,6 @@ public:
             return *slotPointer(_length - 1);
     }
 
-    /**
-     * Returns a mutable reference to one live element.
-     *
-     * Params:
-     *   index = zero-based index in the live prefix
-     *
-     * Returns:
-     *   Borrowed reference to the selected element.
-     *
-     * Preconditions:
-     *   `index < length`.
-     */
     pragma(inline, true)
     ref T opIndex(size_t index)
         return scope pure nothrow @safe @nogc
@@ -244,19 +194,6 @@ public:
             return *slotPointer(index);
     }
 
-    /**
-     * Borrows the complete live prefix as a mutable D slice.
-     *
-     * Returns:
-     *   Slice containing exactly `length` live elements.
-     *
-     * Invalidation:
-     *   Structural mutation, whole-vector move, or destruction invalidates
-     *   previously returned slices.
-     *
-     * Allocation:
-     *   None.
-     */
     pragma(inline, true)
     T[] opSlice()
         return scope pure nothrow @safe @nogc
@@ -278,23 +215,14 @@ public:
     }
 
     /**
-     * Appends one value when the caller guarantees spare capacity.
+     * Appends one value.
      *
-     * Params:
-     *   value = value used to construct the new last element
+     * Precondition: spare capacity exists.
      *
-     * Preconditions:
-     *   `!full`.
-     *
-     * Effects:
-     *   Increases `length` by one and invalidates previously borrowed slices.
-     *
-     * Allocation:
-     *   None by the container.
-     *
-     * This precondition-based primitive exists so hot callers do not pay an
-     * additional full-capacity branch after assertions are removed. Use
-     * `tryPushBack` when capacity is part of ordinary control flow.
+     * This is deliberately the precondition-based primitive needed by the
+     * geo-d/geo3-d ExpansionBuffer consumer. A checked tryPushBack wrapper is
+     * provided separately so the hot path need not pay a full-capacity branch
+     * after assertions are removed.
      */
     static if (useDirectScalarStorage)
     {
@@ -308,18 +236,6 @@ public:
             ++_length;
         }
 
-        /**
-         * Attempts to append one scalar value without exceeding capacity.
-         *
-         * Params:
-         *   value = value to append
-         *
-         * Returns:
-         *   `true` when appended; `false` when already full.
-         *
-         * Failure:
-         *   A `false` result leaves the vector unchanged.
-         */
         pragma(inline, true)
         bool tryPushBack(T value)
             pure nothrow @safe @nogc
@@ -365,19 +281,6 @@ public:
             ++_length;
         }
 
-        /**
-         * Attempts to append one value without exceeding capacity.
-         *
-         * Params:
-         *   value = value used to construct the new last element
-         *
-         * Returns:
-         *   `true` when appended; `false` when already full.
-         *
-         * Failure:
-         *   A `false` result performs no element construction and leaves the
-         *   vector unchanged.
-         */
         bool tryPushBack(U)(auto ref U value)
         if (is(Unqual!U == T) &&
             (
@@ -396,15 +299,6 @@ public:
         }
     }
 
-    /**
-     * Removes and ends the lifetime of the last live element.
-     *
-     * Preconditions:
-     *   The vector is not empty.
-     *
-     * Effects:
-     *   Decreases `length` by one and invalidates previously borrowed slices.
-     */
     void popBack()()
     {
         assert(!empty);
@@ -413,18 +307,6 @@ public:
         endLiveSlot!()(_length);
     }
 
-    /**
-     * Removes every live element and returns the vector to its empty state.
-     *
-     * Effects:
-     *   Sets `length` to zero and invalidates previously borrowed references
-     *   and slices. Inline capacity is retained because it is part of the
-     *   object itself.
-     *
-     * Complexity:
-     *   O(1) for trivial pointer-free `T`; otherwise O(length) when lifetime
-     *   or GC sanitation work is required.
-     */
     pragma(inline, true)
     void clear()()
     {
