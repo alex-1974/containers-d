@@ -6,6 +6,16 @@ The project follows Semantic Versioning for published releases.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-02
+
+### Documentation and maintenance
+
+- Promoted the complete Segmented Buffer consumer documentation and Ddoc API
+  contract to the released documentation line.
+- Published the stable GitHub Pages/DDox workflow from the release line.
+- Updated GitHub Actions dependencies and portability workflow configuration.
+- Added the development AI-assistance acknowledgement to the README.
+
 ## [0.3.0] - 2026-11-02
 
 ### Added
