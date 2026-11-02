@@ -25,6 +25,8 @@ import containers :
     BlockingQueuePopStatus,
     BlockingQueuePushResult,
     RingBuffer,
+    SegmentedBuffer,
+    SegmentedByteBuffer,
     ScratchBuffer,
     StaticRingBuffer,
     StaticVector,
@@ -320,17 +322,22 @@ contents. Data is never silently flattened into one large allocation.
 import containers : SegmentedByteBuffer;
 
 auto received = SegmentedByteBuffer(64 * 1024, 16 * 1024 * 1024);
-const accepted = received.append(receivedChunk);
-if (accepted != receivedChunk.length)
-    handleMaximumLength();
+ubyte[] receivedChunk = [1, 2, 3, 4, 5];
+const accepted = received.append(receivedChunk[]);
+assert(accepted == receivedChunk.length);
 
 // Send or process the chunks without first joining them.
+size_t bytesProcessed;
 foreach (index; 0 .. received.segmentCount)
-    send(received.segment(index));
+{
+    auto chunk = received.segment(index);
+    bytesProcessed += chunk.length;
+    processChunk(chunk);
+}
 
 // Once the consumer has successfully handled the prefix, release it
 // logically. The underlying segment capacity remains reusable.
-received.consume(bytesSent);
+assert(received.consume(bytesProcessed) == bytesProcessed);
 ```
 
 `append` copies the input chunk into owned storage and returns the number of
