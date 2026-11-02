@@ -6,6 +6,8 @@ The project follows Semantic Versioning for published releases.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-02
+
 ### Added
 
 - `SegmentedBuffer!T`, a bounded single-threaded buffer composed of

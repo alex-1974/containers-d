@@ -2,7 +2,7 @@
 
 High-performance generic container primitives for D.
 
-Current release: `v0.2.0`.
+Current release: `v0.3.0`.
 
 The 0.x line is the API-stabilization period. Minor 0.x releases may make
 breaking public-API changes when required by evidence; patch releases should
@@ -13,10 +13,10 @@ not intentionally break source compatibility.
 Install the published package through the DUB registry:
 
 ```bash
-dub add containers-d@0.2.0
+dub add containers-d@0.3.0
 ```
 
-The published v0.2.0 package root exports the complete qualified family set:
+The published v0.3.0 package root exports the complete qualified family set:
 
 ```d
 import containers :
