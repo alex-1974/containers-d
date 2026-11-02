@@ -269,7 +269,7 @@ jobs:
           import containers : RingBuffer, StaticRingBuffer, StaticVector,
               WorkStealingDeque, SegmentedByteBuffer;
 
-          void main() @safe @nogc nothrow
+          void main()
           {
               StaticVector!(int, 2) vector;
               vector.pushBack(7);
