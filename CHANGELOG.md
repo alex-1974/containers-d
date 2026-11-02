@@ -8,6 +8,14 @@ The project follows Semantic Versioning for published releases.
 
 ### Added
 
+- `SegmentedBuffer!T`, a bounded single-threaded buffer composed of
+  independently owned contiguous segments with append, ordered segment views,
+  front consumption and reusable reset cycles.
+- `SegmentedByteBuffer`, the byte-oriented consumer entry point for chunked
+  I/O without hidden flattening.
+- Consumer-facing Ddoc, README guidance, external smoke coverage and DIP1000
+  borrow-escape validation for the segmented buffer family.
+
 - `StaticVector!(T, Capacity)`, a fixed-capacity, variable-length contiguous
   inline vector with no backing allocation.
 - Borrowed live-prefix access through D slice syntax `vector[]`.

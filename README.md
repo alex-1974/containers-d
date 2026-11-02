@@ -303,3 +303,46 @@ semantics are represented explicitly rather than hidden behind one ambiguous
 container type.
 
 See `ROADMAP.md`, `docs/design/`, and `docs/validation.md`.
+
+## Segmented buffers
+
+The v0.3 development line provides bounded segmented storage for consumers
+that receive or produce data in chunks. The buffer owns each segment
+independently, so a later segment can be acquired without moving earlier
+contents. Data is never silently flattened into one large allocation.
+
+- `SegmentedBuffer!T` — independently owned contiguous segments for generic
+  element values;
+- `SegmentedByteBuffer` — the byte-oriented `SegmentedBuffer!ubyte` entry
+  point used by transport-style consumers.
+
+```d
+import containers : SegmentedByteBuffer;
+
+auto received = SegmentedByteBuffer(64 * 1024, 16 * 1024 * 1024);
+const accepted = received.append(receivedChunk);
+if (accepted != receivedChunk.length)
+    handleMaximumLength();
+
+// Send or process the chunks without first joining them.
+foreach (index; 0 .. received.segmentCount)
+    send(received.segment(index));
+
+// Once the consumer has successfully handled the prefix, release it
+// logically. The underlying segment capacity remains reusable.
+received.consume(bytesSent);
+```
+
+`append` copies the input chunk into owned storage and returns the number of
+accepted elements. A partial result means the maximum length was reached;
+the caller decides whether to retry the remainder or report backpressure.
+`consume` returns the number actually removed from the front. `reset` clears a
+logical batch while retaining segment capacity for the next batch.
+
+`segment(index)` returns a read-only borrowed slice. Do not retain segment
+slices across `append`, `consume`, `reset`, move, or destruction. The type is
+bounded and single-threaded; networking, retries, synchronization and
+backpressure policy remain the consumer's responsibility.
+
+For the full ownership, lifetime and invalidation contract, see
+`docs/design/segmented-buffer.md` and the Ddoc on `SegmentedBuffer!T`.

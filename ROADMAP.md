@@ -355,6 +355,32 @@ Decision record: `docs/design/nested-element-contract.md`.
 
 M8 is complete.
 
+## M9 — Segmented buffer family — in progress
+
+Tracking: issues #85–#92. Release target: v0.3.0.
+
+The family is consumer-driven by chunked I/O requirements. It provides a
+generic `SegmentedBuffer!T` and the byte-oriented `SegmentedByteBuffer` name,
+both using independently owned contiguous segments without hidden flattening.
+
+Current implementation and gates:
+
+- bounded append with explicit partial-acceptance result;
+- ordered borrowed segment access;
+- front consumption without flattening;
+- reset with retained/reusable segment capacity;
+- explicit move, destruction and borrow invalidation rules;
+- DMD/LDC unit and external consumer tests;
+- DIP1000 negative escape coverage;
+- candidate, direct-segment and flattening benchmark probe.
+
+Remaining release work:
+
+- collect retired-instruction measurements in the qualified CI environment;
+- complete the transport-d consumer migration when its segmented prototype is
+  available;
+- run the full v0.3.0 compiler, portability and package release gates.
+
 ## Later candidates
 
 - Arena / BufferPool as separate families where consumer evidence justifies
