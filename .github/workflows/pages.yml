@@ -4,13 +4,15 @@ on:
   push:
     branches:
       - develop
-    tags:
-      - 'v*'
     paths:
       - .github/workflows/pages.yml
       - tools/build-versioned-docs.sh
       - RELEASING.md
       - .gitattributes
+      - README.md
+      - CHANGELOG.md
+      - docs/design/**
+      - source/**
   pull_request:
     branches:
       - develop
@@ -19,12 +21,16 @@ on:
       - tools/build-versioned-docs.sh
       - RELEASING.md
       - .gitattributes
+      - README.md
+      - CHANGELOG.md
+      - docs/design/**
+      - source/**
   workflow_dispatch:
     inputs:
       version:
         description: Release tag to publish, for example v0.2.0
         required: true
-        default: v0.2.0
+        default: v0.3.0
         type: string
 
 permissions:
