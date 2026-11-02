@@ -4,9 +4,19 @@ All notable changes to `containers-d` are documented here.
 
 The project follows Semantic Versioning for published releases.
 
-## [0.2.0] - 2026-10-08
+## [Unreleased]
+
+## [0.3.0] - 2026-11-02
 
 ### Added
+
+- `SegmentedBuffer!T`, a bounded single-threaded buffer composed of
+  independently owned contiguous segments with append, ordered segment views,
+  front consumption and reusable reset cycles.
+- `SegmentedByteBuffer`, the byte-oriented consumer entry point for chunked
+  I/O without hidden flattening.
+- Consumer-facing Ddoc, README guidance, external smoke coverage and DIP1000
+  borrow-escape validation for the segmented buffer family.
 
 - `StaticVector!(T, Capacity)`, a fixed-capacity, variable-length contiguous
   inline vector with no backing allocation.
@@ -32,13 +42,6 @@ The project follows Semantic Versioning for published releases.
 - `@safe @nogc nothrow` hot operations with a narrow internal ordering
   boundary, native x86_64/AArch64 correctness qualification, and pinned P08e
   code-generation/performance evidence.
-- `BlockingQueue!T`, a bounded runtime-capacity synchronized FIFO for
-  multiple producers and consumers, with non-blocking producer admission,
-  blocking consumer wait, and explicit `pushed`/`full`/`closed` outcomes.
-- Idempotent close-and-drain semantics for `BlockingQueue!T`: close rejects
-  future pushes, preserves already queued work, and wakes blocked consumers.
-- Native x86_64/AArch64 contention, synchronization-cost, wait/wake, and
-  close/wake-all qualification for the BlockingQueue design.
 
 ## [0.1.1] - 2026-10-07
 

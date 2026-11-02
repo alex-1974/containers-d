@@ -1,0 +1,5 @@
+name "containers-d-static-ring-nested-element-negative"
+description "StaticRingBuffer must reject nested/context-bearing struct elements"
+targetType "executable"
+
+dependency "containers-d" path="../../../"

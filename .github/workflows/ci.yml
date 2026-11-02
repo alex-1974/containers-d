@@ -80,6 +80,10 @@ jobs:
         shell: bash
         run: DFLAGS="-preview=dip1000" dub run --root=tests/static-vector-consumer --compiler="$DC" --force
 
+      - name: Nested element compile contract
+        shell: bash
+        run: dub run --root=tests/nested-element-contract --compiler="$DC" --force
+
       - name: StaticVector lifecycle
         shell: bash
         run: dub run --root=tests/static-vector-lifecycle --compiler="$DC" --force
@@ -100,6 +104,14 @@ jobs:
         shell: bash
         run: dub run --root=tests/static-ring-overalignment-gc --compiler="$DC" --force
 
+      - name: Segmented buffer consumer
+        shell: bash
+        run: dub run --root=tests/segmented-buffer-consumer --compiler="$DC" --force
+
+      - name: Segmented buffer GC and alignment
+        shell: bash
+        run: dub run --root=tests/segmented-buffer-gc --compiler="$DC" --force
+
       - name: Inline storage GC reachability
         shell: bash
         run: dub run --root=tests/inline-storage-gc --compiler="$DC" --force
@@ -111,7 +123,8 @@ jobs:
             tests/compile-negative/segment-escape \
             tests/compile-negative/runtime-segment-escape \
             tests/compile-negative/static-vector-slice-escape \
-            tests/compile-negative/static-vector-ref-escape
+            tests/compile-negative/static-vector-ref-escape \
+            tests/compile-negative/segmented-buffer-slice-escape
           do
             if DFLAGS="-preview=dip1000" dub build \
                 --root="$root" \
@@ -134,6 +147,24 @@ jobs:
                 --compiler="$DC" \
                 --force; then
               echo "Expected invalid StaticVector transfer to fail: $root"
+              false
+            fi
+          done
+
+      - name: Nested element negative compile contract
+        shell: bash
+        run: |
+          for root in \
+            tests/compile-negative/static-ring-nested-element \
+            tests/compile-negative/static-vector-nested-element \
+            tests/compile-negative/runtime-ring-nested-element \
+            tests/compile-negative/scratch-buffer-nested-element
+          do
+            if dub build \
+                --root="$root" \
+                --compiler="$DC" \
+                --force; then
+              echo "Expected nested/context-bearing element rejection: $root"
               false
             fi
           done

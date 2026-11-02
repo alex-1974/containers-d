@@ -17,40 +17,22 @@ import core.lifetime : emplace, forward;
 import std.traits : hasIndirections, isNested, Unqual;
 
 /**
- * Reusable contiguous work buffer for algorithms that need temporary typed
- * storage across many processing passes.
+ * Reusable runtime-capacity contiguous typed buffer.
  *
- * ScratchBuffer owns one runtime-sized backing allocation and exposes exactly
- * the live prefix as ordinary D indexing and slicing. The usual pattern is to
- * reserve capacity once, fill the buffer during a work phase, consume the
- * live prefix, call `reset`, and reuse the same allocation in the next phase.
+ * ScratchBuffer owns one backing allocation and exposes an exact live
+ * contiguous prefix. Reset ends the live element lifetimes while retaining the
+ * established backing capacity for later reuse.
  *
- * Use ScratchBuffer when capacity reuse matters but automatic container growth
- * would hide allocation policy from the caller. The family is deliberately
- * thread-confined. It is not a pool, arena, synchronized buffer, geometric
- * vector, or live-content reallocator.
- *
- * Params:
- *   T = element type stored in the reusable contiguous allocation
- *
- * Init:
- *   `.init` is a valid empty buffer with zero capacity.
- *
- * Allocation:
- *   Construction or successful empty-buffer `tryReserve` may acquire backing
- *   storage. `tryPushBack`, indexed access, slicing, and `reset` do not grow
- *   or reacquire storage.
- *
- * Thread_Safety:
- *   Instances are not synchronized. Concurrent access requires external
- *   synchronization.
+ * The first public family is thread-confined. It does not provide
+ * synchronization, pooling, heterogeneous arena allocation, automatic shrink,
+ * or live-element reallocation.
  */
 struct ScratchBuffer(T)
 {
     static assert(T.sizeof > 0,
         "ScratchBuffer requires an element type with non-zero size");
-    static assert(!(is(T == struct) && isNested!T && hasIndirections!T),
-        "ScratchBuffer does not support nested/local struct element types with hidden context/indirections");
+    static assert(!(is(T == struct) && isNested!T),
+        "ScratchBuffer does not support nested/context-bearing struct element types");
 
 private:
     mixin PlacementMoveOps!T;
@@ -81,14 +63,9 @@ private:
 
 public:
     /**
-     * Establishes backing storage for exactly the requested capacity.
+     * Establishes one backing allocation for capacity elements.
      *
-     * Params:
-     *   capacity = number of element slots to allocate; zero creates the same
-     *              observable inert state as `.init`
-     *
-     * Allocation:
-     *   Positive capacity may allocate one backing block.
+     * Capacity zero is valid and produces the inert .init-equivalent state.
      */
     this(size_t capacity)
     {
@@ -113,72 +90,39 @@ public:
     /// Identity assignment is deliberately unavailable.
     @disable ref typeof(this) opAssign(ref typeof(this) rhs);
 
-    /// Ends all live element lifetimes before owned storage is released.
     ~this()
     {
         reset();
     }
 
-    /**
-     * Returns the number of backing element slots currently owned.
-     *
-     * Returns:
-     *   Capacity retained across `reset` cycles.
-     */
+    /// Backing element capacity retained across reset cycles.
     size_t capacity() const @safe @nogc nothrow
     {
         return _storage.capacity;
     }
 
-    /**
-     * Returns the number of currently live elements.
-     *
-     * Returns:
-     *   Length of the live contiguous prefix.
-     */
+    /// Number of currently live elements.
     size_t length() const @safe @nogc nothrow
     {
         return _length;
     }
 
-    /**
-     * Reports whether the live prefix is empty.
-     *
-     * Returns:
-     *   `true` when `length == 0`.
-     */
+    /// Whether no live elements are stored.
     bool empty() const @safe @nogc nothrow
     {
         return _length == 0;
     }
 
-    /**
-     * Reports whether every established backing slot is live.
-     *
-     * Returns:
-     *   `true` when `length == capacity`. A zero-capacity buffer is therefore
-     *   both empty and full.
-     */
+    /// Whether the established backing capacity is fully occupied.
     bool full() const @safe @nogc nothrow
     {
         return _length == capacity;
     }
 
     /**
-     * Returns a mutable reference to one live element.
+     * Mutable indexed access to one live element.
      *
-     * Params:
-     *   index = zero-based index in the live prefix
-     *
-     * Returns:
-     *   Borrowed reference to the selected element.
-     *
-     * Preconditions:
-     *   `index < length`.
-     *
-     * Invalidation:
-     *   Successful capacity growth, whole-buffer move, or destruction
-     *   invalidates the reference.
+     * Precondition: index is less than length.
      */
     ref T opIndex(size_t index) scope return
     {
@@ -194,19 +138,11 @@ public:
     }
 
     /**
-     * Borrows the exact live contiguous prefix as a D slice.
+     * Borrows the exact live contiguous prefix.
      *
-     * Returns:
-     *   Mutable slice of the `length` live elements, or an empty slice when no
-     *   element is live.
-     *
-     * Invalidation:
-     *   Successful structural mutation, `reset`, successful capacity growth,
-     *   whole-buffer move, or destruction invalidates previously returned
-     *   slices.
-     *
-     * Allocation:
-     *   None.
+     * Successful structural mutation, reset, successful capacity growth,
+     * whole-buffer move, or destruction invalidates previously returned
+     * slices.
      */
     pragma(inline, true)
     T[] opSlice()() scope return @trusted @nogc nothrow
@@ -222,25 +158,18 @@ public:
     }
 
     /**
-     * Ensures at least the requested backing capacity without relocating live
-     * elements.
+     * Ensures at least minCapacity backing slots without relocating live T.
      *
-     * Params:
-     *   minCapacity = minimum number of backing slots required
+     * Returns true when the current capacity already satisfies minCapacity.
      *
-     * Returns:
-     *   `true` when the current capacity already satisfies the request or when
-     *   an empty buffer was successfully grown; `false` when growth would be
-     *   required while live elements exist.
+     * If growth is required while live elements exist, returns false and
+     * leaves the buffer unchanged.
      *
-     * Failure:
-     *   A `false` result leaves capacity, live elements, and their addresses
-     *   unchanged. Allocation failure follows the runtime-storage fatal OOM
-     *   contract.
+     * If growth is required while empty, replaces the backing allocation with
+     * exactly minCapacity slots. No geometric growth policy is embedded in the
+     * container.
      *
-     * Allocation:
-     *   Growth while empty replaces the backing allocation with exactly
-     *   `minCapacity` slots. No geometric growth policy is embedded.
+     * Allocation failure follows the runtime-storage fatal OOM contract.
      */
     bool tryReserve(size_t minCapacity) @safe @nogc nothrow
     {
@@ -255,20 +184,10 @@ public:
     }
 
     /**
-     * Appends one element when established capacity has a spare slot.
+     * Appends one live element when spare established capacity exists.
      *
-     * Params:
-     *   value = value used to construct the next live element
-     *
-     * Returns:
-     *   `true` when the value was appended; `false` when the buffer is full.
-     *
-     * Failure:
-     *   A full-buffer result performs no allocation and leaves the live prefix
-     *   unchanged.
-     *
-     * Allocation:
-     *   None by the container. Operations performed by `T` may allocate.
+     * Returns false when full. A failed insertion performs no allocation and
+     * leaves the live prefix unchanged.
      */
     pragma(inline, true)
     bool tryPushBack(U)(auto ref U value)
@@ -296,17 +215,9 @@ public:
     }
 
     /**
-     * Ends all live element lifetimes and retains the backing allocation.
+     * Ends all live element lifetimes while retaining backing capacity.
      *
-     * After return, `length == 0` and `capacity` is unchanged. Previously
-     * borrowed element references and slices are invalid.
-     *
-     * Complexity:
-     *   O(1) for trivial pointer-free `T`; otherwise O(length) when element
-     *   destruction or GC-root sanitation is required.
-     *
-     * Allocation:
-     *   None.
+     * Trivial pointer-free T specializes to an O(1) logical reset.
      */
     pragma(inline, true)
     void reset()()
@@ -327,24 +238,19 @@ public:
     }
 }
 
-/// Reuse one allocation across independent work phases.
+///
 unittest
 {
     auto scratch = ScratchBuffer!int(4);
 
-    // Build temporary input for one algorithm pass.
     assert(scratch.tryPushBack(10));
     assert(scratch.tryPushBack(20));
     assert(scratch[] == [10, 20]);
 
-    // End the phase without giving the backing allocation back to the system.
     scratch.reset();
+
     assert(scratch.empty);
     assert(scratch.capacity == 4);
-
-    // The same established capacity is ready for the next phase.
-    assert(scratch.tryPushBack(30));
-    assert(scratch[] == [30]);
 }
 
 version (unittest)

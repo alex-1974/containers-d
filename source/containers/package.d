@@ -7,6 +7,8 @@
  * - $(LREF StaticRingBuffer): compile-time capacity inline FIFO ring buffer;
  * - $(LREF RingBuffer): runtime capacity FIFO with one owned backing allocation;
  * - $(LREF ScratchBuffer): reusable runtime-capacity contiguous typed scratch storage;
+ * - $(LREF SegmentedBuffer): bounded storage composed of independent segments;
+ * - $(LREF SegmentedByteBuffer): byte-oriented segmented storage;
  * - $(LREF WorkStealingDeque): bounded single-owner / multi-thief concurrent deque;
  * - $(LREF BlockingQueue): bounded synchronized MPMC blocking FIFO.
  */
@@ -21,6 +23,9 @@ public import containers.ring_buffer : StaticRingBuffer;
 public import containers.runtime_ring_buffer : RingBuffer;
 public import containers.static_vector : StaticVector;
 public import containers.scratch_buffer : ScratchBuffer;
+public import containers.segmented_buffer :
+    SegmentedBuffer,
+    SegmentedByteBuffer;
 public import containers.work_stealing_deque :
     WorkStealingDeque,
     WorkStealingTakeResult;

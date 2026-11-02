@@ -4,7 +4,6 @@ on:
   pull_request:
     branches:
       - develop
-      - 'release/**'
     paths:
       - source/containers/work_stealing_deque.d
       - benchmarks/work_stealing_p08e_parity_probe.d

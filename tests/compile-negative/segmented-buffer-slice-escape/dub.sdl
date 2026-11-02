@@ -1,0 +1,9 @@
+name "containers-d-negative-segmented-buffer-slice-escape"
+description "Negative compile gate for segmented-buffer borrowed slices"
+targetType "executable"
+
+dependency "containers-d" path="../../../"
+
+buildType "dip1000" {
+    dflags "-preview=dip1000"
+}

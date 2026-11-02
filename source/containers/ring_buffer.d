@@ -195,13 +195,7 @@ version (unittest)
 }
 
 ///
-/// Fixed-capacity FIFO for small bounded queues that should carry their storage
-/// inline with the owning object.
-///
-/// Use StaticRingBuffer when the maximum queue size is known at compile time
-/// and a separate backing allocation is undesirable. It preserves FIFO order
-/// across physical wraparound and can expose the logical sequence as at most
-/// two contiguous borrowed segments.
+/// Stores up to `Capacity` FIFO elements in inline storage.
 ///
 /// Exactly `length` slots contain live `T` objects. Unused slots are raw
 /// storage and are not default-constructed merely because the buffer exists.
@@ -212,8 +206,9 @@ version (unittest)
 /// Identity assignment is currently disabled.
 ///
 /// Params:
-///   T = element type; nested/local struct types carrying hidden outer
-///       context/indirections are not supported in the v0.1 API
+///   T = element type; nested/context-bearing struct types are unsupported
+///       because generic raw-storage construction cannot portably supply
+///       their hidden lexical context
 ///   Capacity = maximum number of live elements; must be greater than zero
 ///
 /// Init:
@@ -242,8 +237,8 @@ struct StaticRingBuffer(T, size_t Capacity)
         "StaticRingBuffer requires an element type with non-zero size");
     static assert((T.alignof & (T.alignof - 1)) == 0,
         "StaticRingBuffer requires power-of-two T alignment");
-    static assert(!(is(T == struct) && isNested!T && hasIndirections!T),
-        "StaticRingBuffer v0.1 does not support nested/local struct element types with hidden context/indirections");
+    static assert(!(is(T == struct) && isNested!T),
+        "StaticRingBuffer does not support nested/context-bearing struct element types");
 
     /// Compile-time maximum number of live elements.
     enum size_t capacity = Capacity;
@@ -467,34 +462,19 @@ public:
     // self-assignment and exception guarantees are specified.
     @disable ref typeof(this) opAssign(ref typeof(this) rhs);
 
-    /**
-     * Returns the number of live elements.
-     *
-     * Returns:
-     *   Current logical FIFO length.
-     */
+    /// Returns the number of live elements.
     size_t length() const nothrow @safe @nogc
     {
         return _length;
     }
 
-    /**
-     * Reports whether the buffer contains no live elements.
-     *
-     * Returns:
-     *   `true` when `length == 0`.
-     */
+    /// Returns whether the buffer contains no live elements.
     bool empty() const nothrow @safe @nogc
     {
         return _length == 0;
     }
 
-    /**
-     * Reports whether all `Capacity` slots contain live elements.
-     *
-     * Returns:
-     *   `true` when no additional element can be inserted.
-     */
+    /// Returns whether all `Capacity` slots contain live elements.
     bool full() const nothrow @safe @nogc
     {
         return _length == Capacity;
@@ -539,16 +519,10 @@ public:
     }
 
     /**
-     * Returns a mutable reference by logical FIFO index.
-     *
-     * Params:
-     *   logicalIndex = zero-based position in FIFO order
-     *
-     * Returns:
-     *   Borrowed reference to the selected live element.
+     * Returns a mutable reference to an element by logical FIFO index.
      *
      * Preconditions:
-     *   `logicalIndex < length`.
+     *   logicalIndex is less than length.
      */
     ref T opIndex(size_t logicalIndex)
     {
@@ -662,9 +636,6 @@ public:
     /**
      * Appends one value without overwriting existing elements.
      *
-     * Params:
-     *   value = value used to construct the new logical back element
-     *
      * Returns false when full. On that path the logical sequence is unchanged
      * and the container performs no allocation or element construction.
      *
@@ -770,7 +741,6 @@ public:
         assert(buffer.empty);
     }
 
-    /// Destroys every live inline element when the buffer itself is destroyed.
     ~this()
     {
         clear();
@@ -778,21 +748,14 @@ public:
 
 }
 
-/// Keep a small FIFO entirely inside its owning object.
+///
 unittest
 {
     StaticRingBuffer!(int, 3) buffer;
-
-    // The checked push never overwrites an older queued value.
     assert(buffer.tryPushBack(10));
     assert(buffer.tryPushBack(20));
-
-    // FIFO removal exposes the oldest remaining value.
     buffer.popFront();
     assert(buffer.front == 20);
-
-    // Capacity is compile-time fixed and requires no backing allocation.
-    static assert(buffer.capacity == 3);
 }
 
 unittest
@@ -1501,9 +1464,8 @@ unittest
 
 unittest
 {
-    // v0.1 deliberately rejects nested/local struct element types. Their
-    // hidden context/frame semantics require a separate contract before raw
-    // container storage can admit them safely (issue #10).
+    // Context-bearing nested structs are deliberately unsupported: generic
+    // raw-storage construction cannot portably supply their hidden frame.
     int outer;
 
     struct NestedElement

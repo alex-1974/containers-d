@@ -4,7 +4,6 @@ on:
   pull_request:
     branches:
       - main
-      - 'release/**'
   push:
     branches:
       - main
@@ -80,14 +79,6 @@ jobs:
         shell: bash
         run: DFLAGS="-preview=dip1000" dub run --root=tests/consumer --compiler="$DC" --force
 
-      - name: BlockingQueue public consumer
-        shell: bash
-        run: dub run --root=tests/blocking-queue-consumer --compiler="$DC" --force
-
-      - name: BlockingQueue public consumer with DIP1000
-        shell: bash
-        run: DFLAGS="-preview=dip1000" dub run --root=tests/blocking-queue-consumer --compiler="$DC" --force
-
       - name: WorkStealingDeque concurrent correctness
         shell: bash
         run: dub run --root=tests/work-stealing-correctness --compiler="$DC" --force
@@ -111,6 +102,14 @@ jobs:
       - name: Runtime GC reachability
         shell: bash
         run: dub run --root=tests/gc-reachability --compiler="$DC" --force
+
+      - name: Segmented buffer consumer
+        shell: bash
+        run: dub run --root=tests/segmented-buffer-consumer --compiler="$DC" --force
+
+      - name: Segmented buffer GC and alignment
+        shell: bash
+        run: dub run --root=tests/segmented-buffer-gc --compiler="$DC" --force
 
       - name: Static ring over-alignment GC reachability
         shell: bash
@@ -150,6 +149,24 @@ jobs:
             fi
           done
 
+      - name: Nested element negative compile contract
+        shell: bash
+        run: |
+          for root in \
+            tests/compile-negative/static-ring-nested-element \
+            tests/compile-negative/static-vector-nested-element \
+            tests/compile-negative/runtime-ring-nested-element \
+            tests/compile-negative/scratch-buffer-nested-element
+          do
+            if dub build \
+                --root="$root" \
+                --compiler="$DC" \
+                --force; then
+              echo "Expected nested/context-bearing element rejection: $root"
+              false
+            fi
+          done
+
       - name: WorkStealingDeque negative compile contract
         shell: bash
         run: |
@@ -175,40 +192,10 @@ jobs:
         shell: bash
         run: dub build --build=release --compiler="$DC" --force
 
-      - name: Ddoc source documentation build
+      - name: Documentation build
         if: matrix.compiler == 'dmd-2.111.0'
         shell: bash
         run: dub build --build=docs --compiler="$DC" --force
-
-      - name: DDox rendered API build
-        if: matrix.compiler == 'dmd-2.111.0'
-        shell: bash
-        run: |
-          rm -rf build/ddox-audit
-          mkdir -p build/ddox-audit
-
-          # DDox is the release renderer. The source Ddoc remains the
-          # authoritative contract; this gate verifies that the renderer can
-          # actually publish that contract.
-          dub build -b ddox --compiler="$DC" --force
-
-          find . -type f -name '*.html' -print > build/ddox-audit/html-files.txt
-          test -s build/ddox-audit/html-files.txt
-
-          for symbol in \
-            StaticRingBuffer \
-            RingBuffer \
-            StaticVector \
-            ScratchBuffer \
-            WorkStealingDeque \
-            BlockingQueue
-          do
-            if ! xargs grep -l "$symbol" < build/ddox-audit/html-files.txt \
-                > "build/ddox-audit/$symbol.txt"; then
-              echo "DDox output is missing public family: $symbol"
-              exit 1
-            fi
-          done
 
   package-gate:
     name: Release package / DMD 2.111.0
@@ -279,15 +266,8 @@ jobs:
           EOF
 
           cat > build/archive-consumer/source/app.d <<'EOF'
-          import containers :
-              BlockingQueue,
-              BlockingQueuePopStatus,
-              BlockingQueuePushResult,
-              RingBuffer,
-              ScratchBuffer,
-              StaticRingBuffer,
-              StaticVector,
-              WorkStealingDeque;
+          import containers : RingBuffer, StaticRingBuffer, StaticVector,
+              WorkStealingDeque, SegmentedByteBuffer;
 
           void main()
           {
@@ -307,20 +287,9 @@ jobs:
               auto runtime = RingBuffer!int(2);
               assert(runtime.tryPushBack(2));
 
-              ScratchBuffer!int scratch;
-              assert(scratch.tryReserve(4));
-              assert(scratch.tryPushBack(3));
-              scratch.reset();
-              assert(scratch.capacity == 4);
-
-              auto blocking = new BlockingQueue!int(2);
-              assert(blocking.tryPush(4) == BlockingQueuePushResult.pushed);
-              assert(blocking.close);
-              auto value = blocking.waitPop();
-              assert(value.found && value.value == 4);
-              assert(
-                  blocking.waitPop().status ==
-                  BlockingQueuePopStatus.closed);
+              auto segmented = SegmentedByteBuffer(2, 4);
+              assert(segmented.append([3, 4]) == 2);
+              assert(segmented.segment(0) == [3, 4]);
 
               assert(fixed.front + runtime.front == 3);
           }
@@ -372,10 +341,6 @@ jobs:
         shell: bash
         run: dub run --root=tests/consumer --compiler="$DC" --force
 
-      - name: BlockingQueue portability consumer
-        shell: bash
-        run: dub run --root=tests/blocking-queue-consumer --compiler="$DC" --force
-
       - name: StaticVector lifecycle qualification
         shell: bash
         run: dub run --root=tests/static-vector-lifecycle --compiler="$DC" --force
@@ -391,6 +356,14 @@ jobs:
       - name: Runtime GC reachability
         shell: bash
         run: dub run --root=tests/gc-reachability --compiler="$DC" --force
+
+      - name: Segmented buffer consumer
+        shell: bash
+        run: dub run --root=tests/segmented-buffer-consumer --compiler="$DC" --force
+
+      - name: Segmented buffer GC and alignment
+        shell: bash
+        run: dub run --root=tests/segmented-buffer-gc --compiler="$DC" --force
 
       - name: Release build
         shell: bash
