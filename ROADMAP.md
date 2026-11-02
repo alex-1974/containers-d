@@ -355,7 +355,7 @@ Decision record: `docs/design/nested-element-contract.md`.
 
 M8 is complete.
 
-## M9 — Segmented buffer family — in progress
+## M9 — Segmented buffer family — complete
 
 Tracking: issues #85–#92. Release target: v0.3.0.
 
@@ -374,12 +374,15 @@ Current implementation and gates:
 - DIP1000 negative escape coverage;
 - candidate, direct-segment and flattening benchmark probe.
 
-Remaining release work:
+Qualified result:
 
-- collect retired-instruction measurements in the qualified CI environment;
-- complete the transport-d consumer migration when its segmented prototype is
-  available;
-- run the full v0.3.0 compiler, portability and package release gates.
+- transport-d approved and released its consumer integration;
+- DMD/LDC correctness, consumer, GC/alignment and DIP1000 gates pass;
+- the segmented-buffer Callgrind workflow passes on DMD 2.111 and LDC 1.41;
+- the feature was merged to develop through PR #93.
+
+The remaining v0.3.0 release work is repository publication and package
+promotion, not further segmented-buffer design.
 
 ## Later candidates
 

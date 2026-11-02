@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - develop
-    tags:
-      - 'v*'
     paths:
       - .github/workflows/pages.yml
       - tools/build-versioned-docs.sh
@@ -24,7 +22,7 @@ on:
       version:
         description: Release tag to publish, for example v0.2.0
         required: true
-        default: v0.2.0
+        default: v0.3.0
         type: string
 
 permissions:
