@@ -347,3 +347,12 @@ backpressure policy remain the consumer's responsibility.
 For the full ownership, lifetime and invalidation contract, see
 `docs/design/segmented-buffer-api.md`, the implementation design in
 `docs/design/segmented-buffer.md`, and the Ddoc on `SegmentedBuffer!T`.
+
+## Development acknowledgement
+
+Assisted by AI.
+
+The library has been developed and reviewed with assistance from multiple AI
+systems and models. API compatibility and source correctness remain subject to
+the repository's verification gates; the maintainer makes final release
+decisions.
